@@ -13,44 +13,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
-import java.util.UUID
+
 
 @Composable
-internal fun CardEditor(card: Card?, suggestedTags: List<String>, model: VocabularyModel) {
-    val id = rememberSaveable { card?.id ?: UUID.randomUUID().toString() }
-    var english by rememberSaveable { mutableStateOf(card?.english.orEmpty()) }
-    var spanish by rememberSaveable { mutableStateOf(card?.spanish.orEmpty()) }
-    var example by rememberSaveable { mutableStateOf(card?.example.orEmpty()) }
-    var tags by rememberSaveable { mutableStateOf((card?.tags ?: suggestedTags).joinToString(", ")) }
-    OutlinedTextField(english, { english = it }, Modifier.fillMaxWidth(),
-        label = { Text("Palabra o expresión en inglés") }, singleLine = true)
-    OutlinedTextField(spanish, { spanish = it }, Modifier.fillMaxWidth(),
-        label = { Text("Traducción al español") }, singleLine = true)
-    OutlinedTextField(example, { example = it }, Modifier.fillMaxWidth(),
-        label = { Text("Ejemplo en inglés (opcional)") })
-    OutlinedTextField(tags, { tags = it }, Modifier.fillMaxWidth(),
-        label = { Text("Etiquetas (opcional)") }, supportingText = { Text("Separalas con comas.") })
-    if (model.saveError) Text("No se pudo guardar. Podés volver a intentarlo.",
-        color = MaterialTheme.colorScheme.error)
-    Button(enabled = english.isNotBlank() && spanish.isNotBlank() && !model.saving,
-        onClick = { model.save(id, english, spanish, example, tags) }) {
-        Text(if (model.saving) "Guardando…" else "Guardar")
-    }
-}
-
-@Composable
-internal fun Library(cards: List<Card>, highlighted: String?, onAdd: () -> Unit, onEdit: (String) -> Unit) {
+internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: String?, onAdd: () -> Unit, onEdit: (String) -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    Button(onClick = onAdd) { Text("Añadir tarjeta") }
     if (cards.isEmpty()) {
         Text("Todavía no hay tarjetas en tu biblioteca.")
-        Button(onClick = onAdd) { Text("Crear la primera tarjeta") }
         return
     }
     OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(),
         label = { Text("Buscar en inglés o español") }, singleLine = true)
-    val visible = remember(cards, search, highlighted) {
+    if (knownTags.isNotEmpty()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TagMenu(filter ?: "Filtrar por etiqueta", knownTags) { filter = it }
+            if (filter != null) TextButton(onClick = { filter = null }) { Text("Quitar filtro") }
+        }
+    }
+    val visible = remember(cards, search, filter, highlighted) {
         val query = search.trim()
-        cards.filter { it.english.contains(query, true) || it.spanish.contains(query, true) }
+        cards.filter { card ->
+            (card.english.contains(query, true) || card.spanish.contains(query, true)) &&
+                (filter == null || card.tags.any { it.equals(filter, ignoreCase = true) })
+        }
             .sortedByDescending { it.id == highlighted }
     }
     if (visible.isEmpty()) Text("No hay coincidencias.")

@@ -7,31 +7,37 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.diegovocabcards.data.Card
+import com.example.diegovocabcards.data.VocabularyDao
 import com.example.diegovocabcards.data.VocabularyDatabase
 import kotlinx.coroutines.launch
 
-internal class VocabularyModel(app: Application) : AndroidViewModel(app) {
-    private val dao = VocabularyDatabase.get(app).vocabulary()
+internal enum class AfterSave { Library, AnotherCard, AnotherSense }
+internal data class SavedCard(val card: Card, val next: AfterSave)
+
+internal class VocabularyModel(app: Application, private val dao: VocabularyDao) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, VocabularyDatabase.get(app).vocabulary())
+
     val cards = dao.cards()
     var saving by mutableStateOf(false)
         private set
-    var savedId by mutableStateOf<String?>(null)
+    var saved by mutableStateOf<SavedCard?>(null)
         private set
-    var saveError by mutableStateOf(false)
+    var failedId by mutableStateOf<String?>(null)
         private set
 
-    fun acknowledgeSave() { savedId = null }
+    fun acknowledgeSave() { saved = null }
 
-    fun save(id: String, english: String, spanish: String, example: String, tags: String) {
-        if (saving || savedId != null) return
+    fun save(card: Card, next: AfterSave) {
+        if (saving || saved != null) return
         saving = true
-        saveError = false
+        failedId = null
         viewModelScope.launch {
             try {
-                dao.save(id, english, spanish, example, tags)
-                savedId = id
+                dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","))
+                saved = SavedCard(card, next)
             } catch (failure: SQLiteException) {
-                saveError = true
+                failedId = card.id
             } finally {
                 saving = false
             }

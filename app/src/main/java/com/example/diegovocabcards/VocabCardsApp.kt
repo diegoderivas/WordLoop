@@ -28,20 +28,47 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
     val rows by model.cards.collectAsState(initial = null)
     var editId by rememberSaveable { mutableStateOf<String?>(null) }
     var highlighted by rememberSaveable { mutableStateOf<String?>(null) }
+    val knownTags = remember(rows) {
+        rows.orEmpty().flatMap { it.tags }.distinctBy { it.lowercase() }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+    var draftNumber by rememberSaveable { mutableIntStateOf(0) }
+    var seedEnglish by rememberSaveable { mutableStateOf("") }
+    var seedTags by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    var parent by rememberSaveable { mutableStateOf(Screen.Home) }
+    fun newDraft(english: String, tags: List<String>?, from: Screen) {
+        seedEnglish = english
+        seedTags = tags?.let { ArrayList(it) }
+        parent = from
+        draftNumber++
+        screen = Screen.Add
+    }
+    fun add(from: Screen) = newDraft("", null, from)
+    val backTo = when (screen) {
+        Screen.Edit -> Screen.Library
+        Screen.Add -> parent
+        else -> Screen.Home
+    }
     val back = {
-        if (!model.saving) screen = if (screen == Screen.Edit) Screen.Library else Screen.Home
+        if (!model.saving && model.saved == null) screen = backTo
     }
     BackHandler(enabled = !home, onBack = back)
-    LaunchedEffect(model.savedId) {
-        model.savedId?.let {
-            highlighted = it
-            screen = Screen.Library
+    LaunchedEffect(model.saved) {
+        model.saved?.let { result ->
+            val card = result.card
+            when (result.next) {
+                AfterSave.Library -> {
+                    highlighted = card.id
+                    screen = Screen.Library
+                }
+                AfterSave.AnotherCard -> newDraft("", card.tags, Screen.Library)
+                AfterSave.AnotherSense -> newDraft(card.english, card.tags, Screen.Library)
+            }
             model.acknowledgeSave()
         }
     }
 
     Scaffold { insets ->
-        key(screen) {
+        key(screen, draftNumber) {
             Column(
                 Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
                     .then(if (screen == Screen.Library) Modifier else Modifier.verticalScroll(rememberScrollState()))
@@ -53,7 +80,7 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
                         color = MaterialTheme.colorScheme.primary)
                 } else {
                     TextButton(onClick = back, enabled = !model.saving) {
-                        Text(if (screen == Screen.Edit) "Volver a Biblioteca" else "Volver a Inicio")
+                        Text("Volver a ${backTo.title}")
                     }
                 }
                 Text(screen.title, modifier = Modifier.semantics { heading() },
@@ -66,19 +93,23 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
                 when (screen) {
                     Screen.Home -> {
                         for (destination in listOf(Screen.Library, Screen.Add, Screen.Review, Screen.Settings)) {
-                            OutlinedCard(onClick = { screen = destination }, modifier = Modifier.fillMaxWidth()) {
+                            OutlinedCard(onClick = { if (destination == Screen.Add) add(Screen.Home) else screen = destination }, modifier = Modifier.fillMaxWidth()) {
                                 Text(destination.title, Modifier.padding(20.dp),
                                     style = MaterialTheme.typography.titleMedium)
                             }
                         }
                     }
-                    Screen.Library -> Library(cards.orEmpty(), highlighted, onAdd = { screen = Screen.Add }) {
+                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }) {
                         editId = it
                         screen = Screen.Edit
                     }
-                    Screen.Add -> CardEditor(null, cards?.firstOrNull()?.tags.orEmpty(), model)
-                    Screen.Edit -> cards?.find { it.id == editId }?.let { CardEditor(it, emptyList(), model) }
-                    Screen.Review -> Practice(cards.orEmpty()) { screen = Screen.Add }
+                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model) {}
+                    Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
+                        CardEditor(original, original.english, original.tags, knownTags, model) {
+                            newDraft(it.english, it.tags, Screen.Library)
+                        }
+                    }
+                    Screen.Review -> Practice(cards.orEmpty()) { add(Screen.Review) }
                     Screen.Settings -> AppearanceOptions(mode, onModeChange)
                 }
             }
