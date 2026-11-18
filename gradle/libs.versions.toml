@@ -1,4 +1,5 @@
 [versions]
+fsrs = "1.0.0"
 room = "2.8.5"
 ksp = "2.3.14"
 agp = "9.5.1"
@@ -12,6 +13,7 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 
 [libraries]
+fsrs = { module = "io.github.open-spaced-repetition:fsrs", version.ref = "fsrs" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
