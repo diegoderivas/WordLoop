@@ -92,9 +92,11 @@ internal abstract class VocabularyDao {
     }
 }
 
-@Database(entities = [Entry::class, Sense::class, CardTag::class], version = 2)
+@Database(entities = [Entry::class, Sense::class, CardTag::class, ReviewEvent::class],
+    version = 3, autoMigrations = [AutoMigration(from = 2, to = 3)])
 internal abstract class VocabularyDatabase : RoomDatabase() {
     abstract fun vocabulary(): VocabularyDao
+    abstract fun reviews(): ReviewDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
