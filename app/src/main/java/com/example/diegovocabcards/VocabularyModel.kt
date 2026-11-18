@@ -28,13 +28,14 @@ internal class VocabularyModel(app: Application, private val dao: VocabularyDao)
 
     fun acknowledgeSave() { saved = null }
 
-    fun save(card: Card, next: AfterSave) {
+    fun save(card: Card, next: AfterSave, editedEntryCategories: String?) {
         if (saving || saved != null) return
         saving = true
         failedId = null
         viewModelScope.launch {
             try {
-                dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","))
+                dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
+                    editedEntryCategories, card.source)
                 saved = SavedCard(card, next)
             } catch (failure: SQLiteException) {
                 failedId = card.id
