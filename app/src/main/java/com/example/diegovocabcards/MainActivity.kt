@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val vocabulary = androidx.lifecycle.ViewModelProvider(this)[VocabularyModel::class.java]
         val preferences = getSharedPreferences("appearance", MODE_PRIVATE)
         setContent {
             var mode by remember {
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             DiegoVocabCardsTheme(darkTheme = dark) {
-                VocabCardsApp(mode) { selected ->
+                VocabCardsApp(mode, vocabulary) { selected ->
                     preferences.edit().putString("theme", selected.key).apply()
                     mode = selected
                 }
