@@ -2,22 +2,22 @@ package com.example.diegovocabcards
 
 import android.database.sqlite.SQLiteException
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.ReviewDao
 import com.example.diegovocabcards.data.ReviewEvent
+import com.example.diegovocabcards.data.Schedule
 import com.example.diegovocabcards.review.Direction
 import com.example.diegovocabcards.review.Fsrs
 import com.example.diegovocabcards.review.ReviewSettings
 import com.example.diegovocabcards.review.formatReviewInterval
+import com.example.diegovocabcards.review.StudyQueue
 import com.example.diegovocabcards.review.studyQueue
 import io.github.openspacedrepetition.Rating
 import java.time.Clock
@@ -26,118 +26,121 @@ import java.util.Date
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class ReviewPage { Choose, Study, Finished, Manual }
-
 internal val reviewChoices = listOf(
     Rating.AGAIN to "Otra vez", Rating.HARD to "Difícil",
     Rating.GOOD to "Bien", Rating.EASY to "Fácil"
 )
 
 @Composable
-internal fun ScheduledReview(
-    cards: List<Card>,
-    dao: ReviewDao,
-    clock: Clock = Clock.systemUTC(),
-    settings: ReviewSettings = ReviewSettings(),
-    onAdd: () -> Unit
+internal fun rememberReviewQueues(
+    cards: List<Card>?,
+    schedules: List<Schedule>?,
+    clock: Clock
+): Map<Direction, StudyQueue>? {
+    var now by remember(clock) { mutableLongStateOf(clock.millis()) }
+    val queues = remember(cards, schedules, now) {
+        if (cards == null || schedules == null) null
+        else Direction.entries.associateWith { studyQueue(cards, schedules, it, now) }
+    }
+    val wakeAt = queues?.values?.mapNotNull { it.nextDue }?.minOrNull()
+    LaunchedEffect(wakeAt, clock, schedules) {
+        while (true) {
+            now = clock.millis()
+            val untilDue = wakeAt?.minus(now)?.takeIf { it > 0 } ?: 60_000L
+            delay(untilDue.coerceAtMost(60_000L))
+        }
+    }
+    return queues
+}
+
+@Composable
+internal fun ReviewDirections(
+    queues: Map<Direction, StudyQueue>?,
+    home: Boolean,
+    onStart: (Direction) -> Unit
 ) {
-    var page by rememberSaveable { mutableStateOf(ReviewPage.Choose) }
-    if (page == ReviewPage.Manual) {
-        TextButton(onClick = { page = ReviewPage.Choose }) { Text("Volver al repaso programado") }
-        Practice(cards, onAdd)
-        return
-    }
-    if (cards.isEmpty()) {
-        Text("Agregá una tarjeta para empezar a repasar.")
-        Button(onClick = onAdd) { Text("Añadir tarjeta") }
-        return
-    }
-    val flow = remember(dao) { dao.schedules() }
-    val schedules = flow.collectAsState(initial = null).value
-    if (schedules == null) {
+    Text(if (home) "Para repasar" else "Elegí el sentido", style = MaterialTheme.typography.headlineSmall)
+    if (queues == null) {
         Text("Cargando repasos…")
         return
     }
-    var direction by rememberSaveable { mutableStateOf(Direction.ES_EN) }
-    var now by remember { mutableLongStateOf(clock.millis()) }
-    val queues = remember(cards, schedules, now) {
-        Direction.entries.associateWith { studyQueue(cards, schedules, it, now) }
-    }
-    val queue = queues.getValue(direction)
-    val wakeAt = queues.values.mapNotNull { it.nextDue }.minOrNull()
-    LaunchedEffect(wakeAt, now, clock) {
-        // Also recheck wall-clock changes (for example after the device wakes).
-        delay(((wakeAt ?: Long.MAX_VALUE) - clock.millis()).coerceIn(1, 60_000))
-        now = clock.millis()
-    }
-    var currentId by rememberSaveable { mutableStateOf<String?>(null) }
-    var turn by rememberSaveable { mutableIntStateOf(0) }
-    var completed by rememberSaveable { mutableIntStateOf(0) }
-    fun showNext() {
-        val next = queue.ready.firstOrNull()
-        if (next == null) page = ReviewPage.Finished
-        else {
-            currentId = next.card.id
-            turn = next.turn
-            page = ReviewPage.Study
+    for ((direction, queue) in queues) {
+        val colors = if (home && direction == Direction.ES_EN) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        } else CardDefaults.outlinedCardColors()
+        val enabled = queue.ready.isNotEmpty()
+        val details: @Composable () -> Unit = {
+            Text(direction.label, style = MaterialTheme.typography.titleMedium)
+            Text("Pendientes: ${queue.dueCount} · Nuevas: ${queue.newCount}",
+                style = MaterialTheme.typography.bodyMedium)
+            if (!enabled) queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
         }
-    }
-    when (page) {
-        ReviewPage.Choose -> {
-            Text("Repaso programado", style = MaterialTheme.typography.titleMedium)
-            Column(Modifier.selectableGroup()) {
-                for ((option, counts) in queues) {
-                    Row(Modifier.fillMaxWidth().selectable(selected = direction == option,
-                        role = Role.RadioButton, onClick = { direction = option }).padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = direction == option, onClick = null)
-                        Column(Modifier.padding(start = 12.dp)) {
-                            Text(option.label)
-                            Text("Nuevas: ${counts.newCount} · Pendientes: ${counts.dueCount}",
-                                style = MaterialTheme.typography.bodyMedium)
+        if (home) {
+            OutlinedCard(Modifier.fillMaxWidth(), colors = colors) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    details()
+                    val label = if (direction == Direction.ES_EN) "Repasar en inglés" else "Repasar en español"
+                    if (direction == Direction.ES_EN) {
+                        Button(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
+                            Text(label)
+                        }
+                    } else {
+                        OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
+                            Text(label)
                         }
                     }
                 }
             }
-            if (queue.ready.isEmpty()) NextReview(queue.nextDue)
-            Button(enabled = queue.ready.isNotEmpty(), onClick = { completed = 0; showNext() }) {
-                Text("Iniciar repaso")
-            }
-            OutlinedButton(onClick = { page = ReviewPage.Manual }) { Text("Práctica manual sin calificar") }
-        }
-        ReviewPage.Study -> {
-            val question = queue.ready.find { it.card.id == currentId && it.turn == turn }
-            if (question == null) {
-                // Room has published the committed turn. Only then change the question.
-                LaunchedEffect(currentId, turn) {
-                    if (schedules.any { it.senseId == currentId && it.direction == direction && it.turn > turn }) completed++
-                    showNext()
-                }
-            } else {
-                key(question.card.id, turn) {
-                    StudyQuestion(question.card, direction, question.turn, dao, clock, settings) { rating, revealedAt ->
-                        dao.rate(question.card.id, direction, question.turn, rating, clock.millis(), settings, revealedAt)
-                        now = clock.millis()
-                    }
-                }
+        } else {
+            OutlinedCard(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { details() }
             }
         }
-        ReviewPage.Finished -> {
-            Text("Repaso terminado", style = MaterialTheme.typography.titleLarge)
-            Text("Calificaciones guardadas: $completed")
-            if (queue.ready.isEmpty()) NextReview(queue.nextDue)
-            else Text("Ya hay tarjetas disponibles en este sentido.")
-            Button(onClick = { page = ReviewPage.Choose }) { Text("Volver a elegir sentido") }
-        }
-        ReviewPage.Manual -> Unit
     }
 }
 
 @Composable
-private fun NextReview(nextDue: Long?) {
-    Text("No hay tarjetas pendientes en este sentido.")
-    nextDue?.let {
-        Text("Próximo repaso: ${formatReviewDate(it)}")
+internal fun ScheduledReview(
+    direction: Direction,
+    queue: StudyQueue,
+    schedules: List<Schedule>,
+    dao: ReviewDao,
+    clock: Clock,
+    settings: ReviewSettings,
+    onQuestionChanged: suspend () -> Unit,
+    onHome: () -> Unit
+) {
+    var currentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var turn by rememberSaveable { mutableIntStateOf(0) }
+    var completed by rememberSaveable { mutableIntStateOf(0) }
+    var finished by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(currentId, turn, finished) { onQuestionChanged() }
+    val question = queue.ready.find { it.card.id == currentId && it.turn == turn }
+    if (finished) {
+        Text("Repaso terminado", style = MaterialTheme.typography.headlineSmall)
+        Text("Calificaciones guardadas: $completed")
+        if (queue.ready.isEmpty()) {
+            Text("No hay tarjetas pendientes en este sentido.")
+            queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+        } else Text("Ya hay tarjetas disponibles en este sentido.")
+        Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Volver a Inicio") }
+    } else if (question == null) {
+        // Advance only once Room has published the committed turn.
+        LaunchedEffect(currentId, turn, queue, schedules) {
+            if (schedules.any { it.senseId == currentId && it.direction == direction && it.turn > turn }) completed++
+            val next = queue.ready.firstOrNull()
+            if (next == null) finished = true
+            else {
+                currentId = next.card.id
+                turn = next.turn
+            }
+        }
+    } else {
+        key(question.card.id, turn) {
+            StudyQuestion(question.card, direction, question.turn, dao, clock, settings) { rating, revealedAt ->
+                dao.rate(question.card.id, direction, question.turn, rating, clock.millis(), settings, revealedAt)
+            }
+        }
     }
 }
 
@@ -156,15 +159,28 @@ private fun StudyQuestion(
     var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val spanishFirst = direction == Direction.ES_EN
-    Text(direction.label, style = MaterialTheme.typography.labelLarge)
-    Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineMedium)
     val at = revealedAt
+    Text(
+        "${direction.label} · ${if (turn == 0) "Nueva" else "Pendiente"}",
+        style = MaterialTheme.typography.labelLarge
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineMedium)
+            if (at != null) {
+                HorizontalDivider()
+                Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
+                if (card.example.isNotBlank()) Text(card.example)
+            }
+        }
+    }
     if (at == null) {
-        Button(onClick = { revealedAt = clock.millis() }) { Text("Mostrar respuesta") }
+        Button(onClick = { revealedAt = clock.millis() }, modifier = Modifier.fillMaxWidth()) { Text("Mostrar respuesta") }
         return
     }
-    Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
-    if (card.example.isNotBlank()) Text(card.example)
     if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
     val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
         if (turn > 0) value = dao.latest(card.id, direction)
@@ -181,25 +197,36 @@ private fun StudyQuestion(
     for (pair in reviewChoices.chunked(2)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for ((rating, label) in pair) {
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !saving, onClick = {
+                val submit = {
                     if (!saving) {
                         saving = true
                         failed = false
                         scope.launch {
                             try {
                                 onRate(rating, at)
-                            } catch (failure: SQLiteException) {
+                            } catch (_: SQLiteException) {
                                 failed = true
                             } finally {
                                 saving = false
                             }
                         }
                     }
-                }) {
+                }
+                val modifier = Modifier.weight(1f).heightIn(min = 64.dp)
+                val caption: @Composable RowScope.() -> Unit = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(label)
-                        Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall)
+                        Text(label, textAlign = TextAlign.Center)
+                        Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center)
                     }
+                }
+                val padding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                if (rating == Rating.GOOD) {
+                    Button(onClick = submit, modifier = modifier, enabled = !saving,
+                        contentPadding = padding, content = caption)
+                } else {
+                    OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
+                        contentPadding = padding, content = caption)
                 }
             }
         }

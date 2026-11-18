@@ -11,6 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import java.time.Clock
+import com.example.diegovocabcards.review.Direction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -19,8 +22,11 @@ import com.example.diegovocabcards.review.ReviewSettings
 
 private enum class Screen(val title: String) {
     Home("Inicio"), Library("Biblioteca"), Add("Añadir tarjeta"),
-    Review("Repasar"), Settings("Configuración"), ReviewOptions("Ajustes de repaso"), Edit("Editar tarjeta")
+    Review("Repasar"), Study("Repasar"), Manual("Práctica manual"), Settings("Configuración"), ReviewOptions("Ajustes de repaso"), Edit("Editar tarjeta")
 }
+
+private val mainTabs = listOf(Screen.Home to R.drawable.nav_home, Screen.Library to R.drawable.nav_library,
+    Screen.Review to R.drawable.nav_review)
 
 @Composable
 internal fun VocabCardsApp(
@@ -28,11 +34,24 @@ internal fun VocabCardsApp(
     model: VocabularyModel,
     reviewSettings: ReviewSettings = ReviewSettings(),
     onReviewSettingsChange: (ReviewSettings) -> Unit = {},
+    clock: Clock = Clock.systemUTC(),
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
     val home = screen == Screen.Home
     val rows by model.cards.collectAsState(initial = null)
+    val scheduleFlow = remember(model) { model.reviews.schedules() }
+    val schedules by scheduleFlow.collectAsState(initial = null)
+    val queues = rememberReviewQueues(rows, schedules, clock)
+    var direction by rememberSaveable { mutableStateOf(Direction.ES_EN) }
+    var studyOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
+    var settingsOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
+    val mainScreen = mainTabs.any { it.first == screen }
+    fun startStudy(selected: Direction) {
+        direction = selected
+        studyOrigin = screen
+        screen = Screen.Study
+    }
     var editId by rememberSaveable { mutableStateOf<String?>(null) }
     var highlighted by rememberSaveable { mutableStateOf<String?>(null) }
     val knownTags = remember(rows) {
@@ -54,6 +73,9 @@ internal fun VocabCardsApp(
         Screen.Edit -> Screen.Library
         Screen.Add -> parent
         Screen.ReviewOptions -> Screen.Settings
+        Screen.Settings -> settingsOrigin
+        Screen.Study -> studyOrigin
+        Screen.Manual -> Screen.Review
         else -> Screen.Home
     }
     val back = {
@@ -75,24 +97,51 @@ internal fun VocabCardsApp(
         }
     }
 
-    Scaffold { insets ->
-        key(screen, draftNumber) {
-            Column(
-                Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
-                    .then(if (screen == Screen.Library) Modifier else Modifier.verticalScroll(rememberScrollState()))
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                if (home) {
-                    Text("DiegoVocabCards", style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                } else {
-                    TextButton(onClick = back, enabled = !model.saving) {
-                        Text("Volver a ${backTo.title}")
+    Scaffold(
+        topBar = {
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Row(
+                    Modifier.fillMaxWidth().windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                    ).heightIn(min = 56.dp).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!mainScreen) {
+                        IconButton(onClick = back, enabled = !model.saving) {
+                            Icon(painterResource(R.drawable.nav_back), "Volver")
+                        }
+                    }
+                    Text(if (home) "DiegoVocabCards" else screen.title,
+                        Modifier.weight(1f).padding(horizontal = 4.dp).semantics { heading() },
+                        style = MaterialTheme.typography.titleLarge)
+                    if (mainScreen) {
+                        IconButton(onClick = { settingsOrigin = screen; screen = Screen.Settings }) {
+                            Icon(painterResource(R.drawable.nav_settings), "Configuración")
+                        }
                     }
                 }
-                Text(screen.title, modifier = Modifier.semantics { heading() },
-                    style = MaterialTheme.typography.headlineLarge)
+            }
+        },
+        bottomBar = {
+            if (mainScreen) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    for ((tab, icon) in mainTabs) {
+                        NavigationBarItem(selected = screen == tab, onClick = { screen = tab },
+                            icon = { Icon(painterResource(icon), contentDescription = null) },
+                            label = { Text(tab.title) })
+                    }
+                }
+            }
+        }
+    ) { insets ->
+        key(screen, draftNumber) {
+            val scroll = rememberScrollState()
+            Column(
+                Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
+                    .then(if (screen == Screen.Library) Modifier else Modifier.verticalScroll(scroll))
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 val cards = rows
                 if (cards == null && screen !in listOf(Screen.Home, Screen.Settings, Screen.ReviewOptions)) {
                     Text("Cargando biblioteca…")
@@ -100,11 +149,9 @@ internal fun VocabCardsApp(
                 }
                 when (screen) {
                     Screen.Home -> {
-                        for (destination in listOf(Screen.Library, Screen.Add, Screen.Review, Screen.Settings)) {
-                            OutlinedCard(onClick = { if (destination == Screen.Add) add(Screen.Home) else screen = destination }, modifier = Modifier.fillMaxWidth()) {
-                                Text(destination.title, Modifier.padding(20.dp),
-                                    style = MaterialTheme.typography.titleMedium)
-                            }
+                        ReviewDirections(queues, home = true, onStart = ::startStudy)
+                        OutlinedButton(onClick = { add(Screen.Home) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Añadir tarjeta")
                         }
                     }
                     Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }) {
@@ -120,8 +167,26 @@ internal fun VocabCardsApp(
                             newDraft(it.english, it.tags, Screen.Library)
                         }
                     }
-                    Screen.Review -> ScheduledReview(cards.orEmpty(), model.reviews, settings = reviewSettings) {
-                        add(Screen.Review)
+                    Screen.Review -> {
+                        ReviewDirections(queues, home = false, onStart = ::startStudy)
+                        if (cards.orEmpty().isEmpty()) {
+                            TextButton(onClick = { add(Screen.Review) }) { Text("Añadir tarjeta") }
+                        } else {
+                            TextButton(onClick = { screen = Screen.Manual }) {
+                                Text("Práctica manual sin calificar")
+                            }
+                        }
+                    }
+                    Screen.Manual -> Practice(cards.orEmpty()) { add(Screen.Manual) }
+                    Screen.Study -> {
+                        val queue = queues?.get(direction)
+                        val loadedSchedules = schedules
+                        if (queue != null && loadedSchedules != null) {
+                            ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings,
+                                onQuestionChanged = { scroll.scrollTo(0) }) {
+                                screen = Screen.Home
+                            }
+                        } else Text("Cargando repasos…")
                     }
                     Screen.Settings -> {
                         OutlinedButton(onClick = { screen = Screen.ReviewOptions }) { Text("Ajustes de repaso") }

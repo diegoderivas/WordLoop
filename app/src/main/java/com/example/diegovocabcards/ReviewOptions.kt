@@ -81,7 +81,7 @@ internal fun ReviewOptions(current: ReviewSettings, onSave: (ReviewSettings) -> 
         Text("Primera calificación de una tarjeta nueva", style = MaterialTheme.typography.titleSmall)
         Text(intervals.joinToString("\n"))
     }
-    Text("Los ajustes se aplican al volver a calificar una tarjeta.")
+    Text("Los ajustes se aplican al volver a calificar. Las fechas guardadas se conservan.")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(enabled = draft.isValid && draft != current, onClick = { onSave(draft) }) { Text("Guardar") }
         TextButton(onClick = {

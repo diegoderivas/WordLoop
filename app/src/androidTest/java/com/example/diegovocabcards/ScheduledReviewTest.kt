@@ -1,10 +1,9 @@
 package com.example.diegovocabcards
 
 import android.app.Application
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.room.Room
@@ -24,7 +23,11 @@ import java.time.ZoneOffset
 class ScheduledReviewTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun click(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+    private fun click(label: String) {
+        val node = compose.onNodeWithText(label)
+        if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
+        node.performClick()
+    }
 
     @Test fun failedWriteKeepsRevealedCardAndManualPracticeLeavesHistoryIntact() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
@@ -37,22 +40,22 @@ class ScheduledReviewTest {
             override fun withZone(zone: java.time.ZoneId) = Clock.fixed(time, zone)
         }
         try {
-            val cards = runBlocking {
-                db.vocabulary().save("test", "run", "correr", "I run.\nThey run.", "")
-                db.vocabulary().cards().first()
-            }
+            val example = List(16) { "Example ${it + 1}: I run every morning before work." }.joinToString("\n")
+            runBlocking { db.vocabulary().save("test", "run", "correr", example, "") }
+            val model = VocabularyModel(app, db)
             compose.setContent {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    ScheduledReview(cards, db.reviews(), clock, ReviewSettings(retention = 92, nextLearningMinutes = 8)) {}
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.6f)) {
+                    VocabCardsApp(Appearance.Light, model, ReviewSettings(retention = 92, nextLearningMinutes = 8),
+                        clock = clock) {}
                 }
             }
-            click("Iniciar repaso")
+            click("Repasar en inglés")
             compose.onNodeWithText("correr").assertIsDisplayed()
             compose.onNodeWithText("run").assertDoesNotExist()
-            compose.onNodeWithText("I run.", substring = true).assertDoesNotExist()
+            compose.onNodeWithText(example).assertDoesNotExist()
             compose.onNodeWithText("Bien").assertDoesNotExist()
             click("Mostrar respuesta")
-            compose.onNodeWithText("I run.\nThey run.").assertExists()
+            compose.onNodeWithText(example).assertExists()
             compose.onNodeWithText("8 min").assertExists()
             compose.onNodeWithText("12 días").assertExists()
             db.openHelper.writableDatabase.execSQL(
@@ -71,20 +74,40 @@ class ScheduledReviewTest {
                 compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Calificaciones guardadas: 1").assertExists()
-            click("Volver a elegir sentido")
-            compose.onNodeWithText("Iniciar repaso").assertIsNotEnabled()
+            click("Volver a Inicio")
+            compose.onNodeWithText("Repasar en inglés").assertIsNotEnabled()
             compose.onNodeWithText("Próximo repaso", substring = true).assertExists()
+            click("Repasar")
             click("Inglés → Español")
-            compose.onNodeWithText("Iniciar repaso").assertIsEnabled()
+            compose.onNodeWithText("run").assertIsDisplayed()
+            compose.onNodeWithText("correr").assertDoesNotExist()
+            click("Mostrar respuesta")
+            click("Fácil")
+            compose.waitUntil(5000) {
+                compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Volver").performClick()
             click("Práctica manual sin calificar")
             click("Iniciar práctica")
             click("Mostrar respuesta")
             click("Siguiente")
             compose.onNodeWithText("Práctica terminada").assertExists()
             val schedules = runBlocking { db.reviews().schedules().first() }
-            assertEquals(1, schedules.single().turn)
-            assertEquals(Direction.ES_EN, schedules.single().direction)
-            assertEquals(clock.millis() + 480_000, schedules.single().dueAt)
+            assertEquals(2, schedules.size)
+            val spanish = schedules.single { it.direction == Direction.ES_EN }
+            val english = schedules.single { it.direction == Direction.EN_ES }
+            assertEquals(1, spanish.turn)
+            assertEquals(1, english.turn)
+            assertEquals(clock.millis() + 480_000, spanish.dueAt)
+            assertEquals(clock.millis() + java.time.Duration.ofDays(12).toMillis(), english.dueAt)
+            val settings = app.getSharedPreferences("review-test", android.content.Context.MODE_PRIVATE)
+            try {
+                settings.writeReviewSettings(ReviewSettings(retention = 92))
+                assertEquals(92, settings.readReviewSettings().retention)
+                assertEquals(schedules, runBlocking { db.reviews().schedules().first() })
+            } finally {
+                settings.edit().clear().apply()
+            }
         } finally {
             db.close()
         }
