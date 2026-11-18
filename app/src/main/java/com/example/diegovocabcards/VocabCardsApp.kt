@@ -15,14 +15,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.example.diegovocabcards.review.ReviewSettings
 
 private enum class Screen(val title: String) {
     Home("Inicio"), Library("Biblioteca"), Add("Añadir tarjeta"),
-    Review("Repasar"), Settings("Configuración"), Edit("Editar tarjeta")
+    Review("Repasar"), Settings("Configuración"), ReviewOptions("Ajustes de repaso"), Edit("Editar tarjeta")
 }
 
 @Composable
-internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChange: (Appearance) -> Unit) {
+internal fun VocabCardsApp(
+    mode: Appearance,
+    model: VocabularyModel,
+    reviewSettings: ReviewSettings = ReviewSettings(),
+    onReviewSettingsChange: (ReviewSettings) -> Unit = {},
+    onModeChange: (Appearance) -> Unit
+) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
     val home = screen == Screen.Home
     val rows by model.cards.collectAsState(initial = null)
@@ -46,6 +53,7 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
     val backTo = when (screen) {
         Screen.Edit -> Screen.Library
         Screen.Add -> parent
+        Screen.ReviewOptions -> Screen.Settings
         else -> Screen.Home
     }
     val back = {
@@ -86,7 +94,7 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
                 Text(screen.title, modifier = Modifier.semantics { heading() },
                     style = MaterialTheme.typography.headlineLarge)
                 val cards = rows
-                if (cards == null && screen != Screen.Home && screen != Screen.Settings) {
+                if (cards == null && screen !in listOf(Screen.Home, Screen.Settings, Screen.ReviewOptions)) {
                     Text("Cargando biblioteca…")
                     return@Column
                 }
@@ -105,12 +113,24 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
                     }
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
+                        var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
+                        TextButton(onClick = { showProgress = true }) { Text("Progreso de repaso") }
+                        if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
                         CardEditor(original, original.english, original.tags, knownTags, model) {
                             newDraft(it.english, it.tags, Screen.Library)
                         }
                     }
-                    Screen.Review -> ScheduledReview(cards.orEmpty(), model.reviews) { add(Screen.Review) }
-                    Screen.Settings -> AppearanceOptions(mode, onModeChange)
+                    Screen.Review -> ScheduledReview(cards.orEmpty(), model.reviews, settings = reviewSettings) {
+                        add(Screen.Review)
+                    }
+                    Screen.Settings -> {
+                        OutlinedButton(onClick = { screen = Screen.ReviewOptions }) { Text("Ajustes de repaso") }
+                        AppearanceOptions(mode, onModeChange)
+                    }
+                    Screen.ReviewOptions -> ReviewOptions(reviewSettings) {
+                        onReviewSettingsChange(it)
+                        screen = Screen.Settings
+                    }
                 }
             }
         }

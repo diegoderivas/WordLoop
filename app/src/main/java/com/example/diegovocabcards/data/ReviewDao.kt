@@ -4,6 +4,7 @@ import androidx.room.*
 import com.example.diegovocabcards.review.Direction
 import com.example.diegovocabcards.review.Fsrs
 import com.example.diegovocabcards.review.Memory
+import com.example.diegovocabcards.review.ReviewSettings
 import io.github.openspacedrepetition.Rating
 import kotlinx.coroutines.flow.Flow
 
@@ -37,11 +38,21 @@ internal abstract class ReviewDao {
 
     /** The displayed revision identifies a single presentation, including across retries. */
     @Transaction
-    open suspend fun rate(id: String, direction: Direction, expectedTurn: Int, rating: Rating, now: Long) {
+    open suspend fun rate(
+        id: String,
+        direction: Direction,
+        expectedTurn: Int,
+        rating: Rating,
+        now: Long,
+        settings: ReviewSettings = ReviewSettings(),
+        revealedAt: Long = now
+    ) {
         val previous = latest(id, direction)
         if ((previous?.turn ?: 0) != expectedTurn) return
         if (previous != null && now < previous.memory.dueAt) return
-        append(ReviewEvent(id, direction, expectedTurn + 1, rating,
-            Fsrs.rate(previous?.memory, rating, now)))
+        // Use the memory estimate shown at reveal, but start the chosen interval at the tap.
+        val preview = Fsrs.rate(previous?.memory, rating, revealedAt, settings)
+        val next = preview.copy(reviewedAt = now, dueAt = now + (preview.dueAt - revealedAt))
+        append(ReviewEvent(id, direction, expectedTurn + 1, rating, next))
     }
 }

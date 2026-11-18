@@ -13,7 +13,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.ReviewDao
+import com.example.diegovocabcards.data.ReviewEvent
 import com.example.diegovocabcards.review.Direction
+import com.example.diegovocabcards.review.Fsrs
+import com.example.diegovocabcards.review.ReviewSettings
+import com.example.diegovocabcards.review.formatReviewInterval
 import com.example.diegovocabcards.review.studyQueue
 import io.github.openspacedrepetition.Rating
 import java.time.Clock
@@ -24,8 +28,19 @@ import kotlinx.coroutines.launch
 
 private enum class ReviewPage { Choose, Study, Finished, Manual }
 
+internal val reviewChoices = listOf(
+    Rating.AGAIN to "Otra vez", Rating.HARD to "Difícil",
+    Rating.GOOD to "Bien", Rating.EASY to "Fácil"
+)
+
 @Composable
-internal fun ScheduledReview(cards: List<Card>, dao: ReviewDao, clock: Clock = Clock.systemUTC(), onAdd: () -> Unit) {
+internal fun ScheduledReview(
+    cards: List<Card>,
+    dao: ReviewDao,
+    clock: Clock = Clock.systemUTC(),
+    settings: ReviewSettings = ReviewSettings(),
+    onAdd: () -> Unit
+) {
     var page by rememberSaveable { mutableStateOf(ReviewPage.Choose) }
     if (page == ReviewPage.Manual) {
         TextButton(onClick = { page = ReviewPage.Choose }) { Text("Volver al repaso programado") }
@@ -100,8 +115,8 @@ internal fun ScheduledReview(cards: List<Card>, dao: ReviewDao, clock: Clock = C
                 }
             } else {
                 key(question.card.id, turn) {
-                    StudyQuestion(question.card, direction) { rating ->
-                        dao.rate(question.card.id, direction, question.turn, rating, clock.millis())
+                    StudyQuestion(question.card, direction, question.turn, dao, clock, settings) { rating, revealedAt ->
+                        dao.rate(question.card.id, direction, question.turn, rating, clock.millis(), settings, revealedAt)
                         now = clock.millis()
                     }
                 }
@@ -122,29 +137,48 @@ internal fun ScheduledReview(cards: List<Card>, dao: ReviewDao, clock: Clock = C
 private fun NextReview(nextDue: Long?) {
     Text("No hay tarjetas pendientes en este sentido.")
     nextDue?.let {
-        val date = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(it))
-        Text("Próximo repaso: $date")
+        Text("Próximo repaso: ${formatReviewDate(it)}")
     }
 }
 
 @Composable
-private fun StudyQuestion(card: Card, direction: Direction, onRate: suspend (Rating) -> Unit) {
-    var revealed by rememberSaveable { mutableStateOf(false) }
+private fun StudyQuestion(
+    card: Card,
+    direction: Direction,
+    turn: Int,
+    dao: ReviewDao,
+    clock: Clock,
+    settings: ReviewSettings,
+    onRate: suspend (Rating, Long) -> Unit
+) {
+    var revealedAt by rememberSaveable { mutableStateOf<Long?>(null) }
     var saving by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val spanishFirst = direction == Direction.ES_EN
     Text(direction.label, style = MaterialTheme.typography.labelLarge)
     Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineMedium)
-    if (!revealed) {
-        Button(onClick = { revealed = true }) { Text("Mostrar respuesta") }
+    val at = revealedAt
+    if (at == null) {
+        Button(onClick = { revealedAt = clock.millis() }) { Text("Mostrar respuesta") }
         return
     }
     Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
     if (card.example.isNotBlank()) Text(card.example)
     if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
-    val choices = listOf(Rating.AGAIN to "Otra vez", Rating.HARD to "Difícil", Rating.GOOD to "Bien", Rating.EASY to "Fácil")
-    for (pair in choices.chunked(2)) {
+    val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
+        if (turn > 0) value = dao.latest(card.id, direction)
+    }
+    if (turn > 0 && previous?.turn != turn) {
+        Text("Cargando intervalos…")
+        return
+    }
+    val intervals = remember(previous, settings, at) {
+        reviewChoices.associate { (rating, _) ->
+            rating to formatReviewInterval(Fsrs.rate(previous?.memory, rating, at, settings).dueAt - at)
+        }
+    }
+    for (pair in reviewChoices.chunked(2)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for ((rating, label) in pair) {
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !saving, onClick = {
@@ -153,7 +187,7 @@ private fun StudyQuestion(card: Card, direction: Direction, onRate: suspend (Rat
                         failed = false
                         scope.launch {
                             try {
-                                onRate(rating)
+                                onRate(rating, at)
                             } catch (failure: SQLiteException) {
                                 failed = true
                             } finally {
@@ -161,8 +195,16 @@ private fun StudyQuestion(card: Card, direction: Direction, onRate: suspend (Rat
                             }
                         }
                     }
-                }) { Text(label) }
+                }) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(label)
+                        Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }
 }
+
+internal fun formatReviewDate(at: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(at))

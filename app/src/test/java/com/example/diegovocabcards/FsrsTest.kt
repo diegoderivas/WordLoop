@@ -2,10 +2,12 @@ package com.example.diegovocabcards
 
 import com.example.diegovocabcards.review.Fsrs
 import com.example.diegovocabcards.review.Memory
+import com.example.diegovocabcards.review.ReviewSettings
 import io.github.openspacedrepetition.Rating.*
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class FsrsTest {
@@ -28,5 +30,20 @@ class FsrsTest {
         for ((rating, seconds) in listOf(AGAIN to 60L, HARD to 330L, GOOD to 600L, EASY to 16 * 86400L)) {
             assertEquals(start + seconds * 1000, Fsrs.rate(null, rating, start).dueAt)
         }
+    }
+
+    @Test fun retentionShortensDayIntervalsAndShortStepsFollowSettings() {
+        val higherRetention = ReviewSettings(retention = 92)
+        val shorterSteps = higherRetention.copy(firstLearningMinutes = 2, nextLearningMinutes = 6,
+            relearningMinutes = 5)
+        assertEquals(start + 600_000, Fsrs.rate(null, GOOD, start, higherRetention).dueAt)
+        assertEquals(start + TimeUnit.DAYS.toMillis(12), Fsrs.rate(null, EASY, start, higherRetention).dueAt)
+        assertEquals(start + 120_000, Fsrs.rate(null, AGAIN, start, shorterSteps).dueAt)
+        assertEquals(start + 240_000, Fsrs.rate(null, HARD, start, shorterSteps).dueAt)
+        assertEquals(start + 360_000, Fsrs.rate(null, GOOD, start, shorterSteps).dueAt)
+        val graduated = Fsrs.rate(null, EASY, start, shorterSteps)
+        assertEquals(graduated.dueAt + 300_000, Fsrs.rate(graduated, AGAIN, graduated.dueAt, shorterSteps).dueAt)
+        assertFalse(shorterSteps.copy(firstLearningMinutes = 6).isValid)
+        assertFalse(shorterSteps.copy(relearningMinutes = 1440).isValid)
     }
 }
