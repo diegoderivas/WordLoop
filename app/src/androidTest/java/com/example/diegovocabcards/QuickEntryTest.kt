@@ -29,7 +29,7 @@ class QuickEntryTest {
         val dao = db.vocabulary()
         try {
             runBlocking { dao.save("seed", "hello", "hola", "", "diario") }
-            val model = VocabularyModel(app, dao)
+            val model = VocabularyModel(app, db)
             compose.setContent { VocabCardsApp(Appearance.System, model) {} }
             click("Biblioteca")
             click("Añadir tarjeta")

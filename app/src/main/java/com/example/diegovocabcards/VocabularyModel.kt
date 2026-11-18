@@ -8,15 +8,17 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.diegovocabcards.data.Card
-import com.example.diegovocabcards.data.VocabularyDao
 import com.example.diegovocabcards.data.VocabularyDatabase
 import kotlinx.coroutines.launch
 
 internal enum class AfterSave { Library, AnotherCard, AnotherSense }
 internal data class SavedCard(val card: Card, val next: AfterSave)
 
-internal class VocabularyModel(app: Application, private val dao: VocabularyDao) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, VocabularyDatabase.get(app).vocabulary())
+internal class VocabularyModel(app: Application, database: VocabularyDatabase) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, VocabularyDatabase.get(app))
+
+    private val dao = database.vocabulary()
+    val reviews = database.reviews()
 
     val cards = dao.cards()
     var saving by mutableStateOf(false)

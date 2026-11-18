@@ -109,7 +109,7 @@ internal fun VocabCardsApp(mode: Appearance, model: VocabularyModel, onModeChang
                             newDraft(it.english, it.tags, Screen.Library)
                         }
                     }
-                    Screen.Review -> Practice(cards.orEmpty()) { add(Screen.Review) }
+                    Screen.Review -> ScheduledReview(cards.orEmpty(), model.reviews) { add(Screen.Review) }
                     Screen.Settings -> AppearanceOptions(mode, onModeChange)
                 }
             }

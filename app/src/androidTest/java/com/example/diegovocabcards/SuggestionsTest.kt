@@ -22,7 +22,7 @@ class SuggestionsTest {
     @Test fun staleResultsAndManualCorrectionsAreProtected() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
-        val model = VocabularyModel(app, db.vocabulary())
+        val model = VocabularyModel(app, db)
         val started = java.util.concurrent.atomic.AtomicBoolean()
         compose.setContent {
             Column(Modifier.verticalScroll(rememberScrollState())) {
