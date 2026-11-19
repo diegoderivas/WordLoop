@@ -40,7 +40,7 @@ class StudyLayoutTest {
             checkQuestionLayout("run")
             compose.onNodeWithText("correr").assertDoesNotExist()
             compose.onNodeWithText("Escuchar pronunciación").assertDoesNotExist()
-            compose.onNodeWithText("IPA · /ɹʌn/").assertDoesNotExist()
+            compose.onNodeWithText("IPA · /ɹʌn/").assertExists()
             compose.onNodeWithContentDescription("Traducción automática de Google Translate").assertDoesNotExist()
             captureEmulator("piloto-repasar-antes-claro.png")
             tap("Mostrar respuesta")

@@ -108,7 +108,7 @@ class SuggestionsTest {
             fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
             compose.waitUntil(5000) { compose.onAllNodesWithText(removal.definition).fetchSemanticsNodes().isNotEmpty() }
             tap(removal.definition)
-            compose.onNodeWithText("Traducir con Google").assertDoesNotExist()
+            compose.onNodeWithText("Traducir con Google").assertExists()
             tap(flight.definition)
             tap("Traducir con Google")
             compose.waitUntil(5000) { firstStarted.isCompleted }
@@ -119,7 +119,7 @@ class SuggestionsTest {
                 compose.onAllNodesWithText("tomarse un descanso").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("despegar").assertDoesNotExist()
-            tap("Usar traducción")
+            tap("Usar traducción de Google")
             tap("Guardar")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
@@ -129,6 +129,79 @@ class SuggestionsTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test fun compareSenseTranslationsAndChooseSynonymsWithoutChangingManualSpanish() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        try {
+            val model = VocabularyModel(app, db)
+            val flame = Suggestion("Burning material.", "noun", "Dictionary", listOf("fuego"),
+                synonymOptions = listOf("flame"))
+            val dismiss = Suggestion("Dismiss an employee.", "verb", "Dictionary", listOf("despedir"))
+            val dismissed = Suggestion("Lose your job.", "phrase", "Dictionary", listOf("ser despedido"))
+            val delayed = CompletableDeferred<String>()
+            val started = CompletableDeferred<Unit>()
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(null, "fire", emptyList(), emptyList(), model,
+                        lookup = { if (it == "fire") listOf(flame, dismiss) else listOf(dismissed) },
+                        translate = { _, _ -> "echar" },
+                        nanoOptions = { _, sense, task ->
+                            when {
+                                sense == flame -> withContext(NonCancellable) {
+                                    started.complete(Unit); listOf(delayed.await())
+                                }
+                                task == SenseRequest.Synonyms -> listOf("sack", "discharge")
+                                sense == dismiss -> listOf("destituir")
+                                else -> listOf("ser despedido")
+                            }
+                        }) {}
+                }
+            }
+            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            fun waitFor(label: String) = compose.waitUntil(5000) {
+                compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
+            }
+            val spanish = compose.onNodeWithText("Traducción al español")
+            waitFor(flame.definition)
+            tap(flame.definition)
+            compose.onNodeWithText("Sugerir sinónimos con Gemini").assertDoesNotExist()
+            tap("Traducir con Gemini")
+            compose.waitUntil(5000) { started.isCompleted }
+            tap(dismiss.definition)
+            delayed.complete("llama")
+            spanish.performScrollTo().performTextReplacement("mi traducción")
+            tap("Traducir con Google")
+            tap("Traducir con Gemini")
+            waitFor("destituir")
+            compose.onNodeWithText("llama").assertDoesNotExist()
+            compose.onNodeWithText("echar").assertExists()
+            compose.onNodeWithText("Usar del diccionario · despedir").assertExists()
+            spanish.assertTextContains("mi traducción")
+            compose.onNodeWithText("Usar traducción de Gemini").performScrollTo()
+            captureEmulator("editor-propuestas-claro.png")
+            tap("Usar traducción de Google")
+            tap("Usar traducción de Gemini")
+            spanish.assertTextContains("destituir")
+            tap("Sugerir sinónimos con Gemini")
+            tap("sack")
+            tap("Detalles opcionales")
+            compose.onNodeWithText("Sinónimos (separados por comas)").assertTextContains("sack")
+            tap("Guardar")
+            compose.waitUntil(5000) { model.saved != null }
+            val saved = runBlocking { db.vocabulary().cards().first().single() }
+            assertEquals("destituir", saved.spanish)
+            assertTrue(GEMINI_TRANSLATION in saved.source && GOOGLE_TRANSLATION !in saved.source)
+            assertTrue(GEMINI_SYNONYMS in saved.source)
+            compose.runOnIdle { model.acknowledgeSave() }
+            compose.onNodeWithText("Palabra o expresión en inglés").performScrollTo().performTextReplacement("get fired")
+            waitFor(dismissed.definition)
+            tap(dismissed.definition)
+            tap("Traducir con Gemini")
+            tap("Usar traducción de Gemini")
+            spanish.assertTextContains("ser despedido")
+        } finally { db.close() }
     }
 
     @Test fun staleResultsAndManualCorrectionsAreProtected() {

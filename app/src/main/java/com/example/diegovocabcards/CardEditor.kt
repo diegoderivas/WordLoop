@@ -53,6 +53,7 @@ internal fun CardEditor(
     original: Card?, initialEnglish: String, initialTags: List<String>, knownTags: List<String>,
     model: VocabularyModel, lookup: suspend (String) -> List<Suggestion> = Dictionary::lookup,
     translate: suspend (String, Suggestion) -> String? = LocalSenseTranslation::suggest,
+    nanoOptions: suspend (String, Suggestion, SenseRequest) -> List<String> = ::nanoSenseOptions,
     usageNotes: UsageNoteGenerator = NanoUsageNotes,
     onAnotherSense: (Card) -> Unit
 ) {
@@ -73,6 +74,7 @@ internal fun CardEditor(
     var automaticFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var retainedSource by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
     var activeSource by rememberSaveable { mutableStateOf("") }
+    var synonymSource by rememberSaveable { mutableStateOf("") }
     var translationSource by rememberSaveable { mutableStateOf("") }
     var usageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
     var generatedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
@@ -97,6 +99,10 @@ internal fun CardEditor(
     fun editValue(field: MeaningField, value: String) {
         if (field in automatic && value.isNotBlank()) {
             retainedSource = combineSources(retainedSource, activeSource)
+        }
+        if (field == MeaningField.Synonyms && synonymSource.isNotBlank()) {
+            if (value.isNotBlank()) retainedSource = combineSources(retainedSource, synonymSource)
+            synonymSource = ""
         }
         if (field == MeaningField.Spanish && translationSource.isNotEmpty()) {
             if (value.isNotBlank()) retainedSource = combineSources(retainedSource, translationSource)
@@ -147,6 +153,7 @@ internal fun CardEditor(
         manualFields = ArrayList(manualFields - automaticFields.toSet())
         activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
         translationSource = ""
+        synonymSource = ""
         ipa = value.pronunciation?.ipa.orEmpty()
         ipaSource = value.pronunciation?.source.orEmpty()
         selectedKey = value.selectionKey()
@@ -162,17 +169,17 @@ internal fun CardEditor(
         if (value.isNotBlank()) activeSource = selected?.source.orEmpty()
         choosingExample = false
     }
-    fun toggleSynonym(value: String) {
+    fun toggleSynonym(value: String, source: String = selected?.source.orEmpty()) {
         val field = MeaningField.Synonyms
         val terms = commaSeparatedValues(synonyms)
         val updated = (if (value in terms) terms - value else terms + value).joinToString(", ")
         if (field in automatic || (synonyms.isBlank() && field !in manual)) {
             setValue(field, updated)
             automaticFields = ArrayList((automaticFields + field.name).distinct())
-            activeSource = selected?.source.orEmpty()
+            synonymSource = if (updated.isBlank()) "" else source
         } else {
             editValue(field, updated)
-            if (value !in terms) retainedSource = combineSources(retainedSource, selected?.source.orEmpty())
+            if (value !in terms) retainedSource = combineSources(retainedSource, source)
         }
     }
     var tags by rememberSaveable { mutableStateOf(ArrayList(original?.tags ?: initialTags)) }
@@ -185,7 +192,7 @@ internal fun CardEditor(
         .distinctBy { it.lowercase() }
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
         synonyms, senseCategories, entryCategories,
-        storedAttribution(combineSources(retainedSource, activeSource, translationSource)),
+        storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource)),
         usageNote, generatedExamples, ipa, ipaSource)
     fun addPending() {
         tags = ArrayList(effectiveTags)
@@ -201,6 +208,7 @@ internal fun CardEditor(
             automatic.forEach { setValue(it, "") }
             automaticFields = arrayListOf()
             activeSource = ""
+            synonymSource = ""
             translationSource = ""
             ipa = ""
             ipaSource = ""
@@ -208,8 +216,8 @@ internal fun CardEditor(
         english = value
     }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Palabra o expresión en inglés") }, singleLine = true)
-    PronunciationButton(currentQuery)
     IpaContent(ipa, ipaSource)
+    PronunciationButton(currentQuery)
     if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
         Text("Significados", style = MaterialTheme.typography.titleMedium)
         if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
@@ -262,7 +270,7 @@ internal fun CardEditor(
                 confirmButton = { TextButton(onClick = { more = false }) { Text("Cerrar") } })
         }
     }
-    val sources = combineSources(retainedSource, activeSource, translationSource,
+    val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource,
         *suggestions.map { it.source }.toTypedArray())
     if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text("Fuente y licencia") }
     if (showSources && sources.isNotEmpty()) {
@@ -293,27 +301,48 @@ internal fun CardEditor(
         verticalArrangement = Arrangement.spacedBy(2.dp)) {
         OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("Traducción al español") }, singleLine = true)
-        if (spanish.isNotBlank() && (translationSource.isNotEmpty() || GOOGLE_TRANSLATION in retainedSource)) {
+        if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
             TranslationAttribution()
+        } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
+            Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
         }
     }
-    if (selected != null && selected.spanish.isEmpty() && spanish.isBlank() && senseTranslationInput(currentQuery, selected) != null) {
-        key(currentQuery, selectedKey) {
-            SenseTranslationOffer(currentQuery, selected, enabled = !busy,
-                translate = { term, sense ->
-                    val result = translate(term, sense)
-                    result?.takeUnless { candidate ->
-                        suggestions.any { other ->
-                            other != sense && other.spanish.any { senseText(it) == senseText(candidate) }
-                        }
-                    }
-                },
-                onUse = { candidate ->
-                    spanish = candidate
-                    automaticFields = ArrayList((automaticFields + MeaningField.Spanish.name).distinct())
-                    manualFields = ArrayList(manualFields - MeaningField.Spanish.name)
-                    translationSource = GOOGLE_TRANSLATION
-                })
+    // A saved card identifies its own sense even when dictionary lookup is offline.
+    val providerSense = selected ?: original?.takeIf { it.english == currentQuery }?.let {
+        Suggestion(it.definition.ifBlank { it.spanish }, it.senseCategories, it.source,
+            examples = it.example.lines().filter(String::isNotBlank))
+    }
+    if (providerSense != null) key(currentQuery, selectedKey, providerSense) {
+        fun applyTranslation(value: String, source: String) {
+            retainedSource = combineSources(retainedSource).split("\n\n")
+                .filterNot { it == GOOGLE_TRANSLATION || it == GEMINI_TRANSLATION }.joinToString("\n\n")
+            spanish = value
+            automaticFields = ArrayList((automaticFields + MeaningField.Spanish.name).distinct())
+            manualFields = ArrayList(manualFields - MeaningField.Spanish.name)
+            translationSource = source
+        }
+        selected?.spanish?.distinct()?.forEach { value ->
+            TextButton(onClick = { applyTranslation(value, providerSense.source) }, enabled = !busy) {
+                Text("Usar del diccionario · $value")
+            }
+        }
+        SuggestionRequest("Traducir con Google", !busy, {
+            listOfNotNull(translate(currentQuery, providerSense)?.takeUnless { candidate ->
+                suggestions.any { other -> other != providerSense && other.spanish.any { senseText(it) == senseText(candidate) } }
+            })
+        }) { values ->
+            TranslatedText(values.first(), attributed = true)
+            TextButton(onClick = { applyTranslation(values.first(), GOOGLE_TRANSLATION) }, enabled = !busy) {
+                Text("Usar traducción de Google")
+            }
+        }
+        SuggestionRequest("Traducir con Gemini", !busy, {
+            nanoOptions(currentQuery, providerSense, SenseRequest.Translation)
+        }) { values ->
+            Text(values.first())
+            TextButton(onClick = { applyTranslation(values.first(), GEMINI_TRANSLATION) }, enabled = !busy) {
+                Text("Usar traducción de Gemini")
+            }
         }
     }
     val examples = selected?.examples.orEmpty().filter(String::isNotBlank).distinct()
@@ -381,6 +410,19 @@ internal fun CardEditor(
         if (synonymOptions.size > 6) {
             TextButton(onClick = { showAllSynonyms = !showAllSynonyms }) {
                 Text(if (showAllSynonyms) "Ver menos sinónimos" else "Ver más sinónimos")
+            }
+        }
+    }
+    if (synonymOptions.isEmpty() && providerSense != null) key(currentQuery, selectedKey, providerSense) {
+        SuggestionRequest("Sugerir sinónimos con Gemini", !busy, {
+            nanoOptions(currentQuery, providerSense, SenseRequest.Synonyms)
+        }) { values ->
+            Text(GEMINI_SYNONYMS, style = MaterialTheme.typography.labelSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                values.forEach { term ->
+                    FilterChip(selected = term in commaSeparatedValues(synonyms), enabled = !busy,
+                        onClick = { toggleSynonym(term, GEMINI_SYNONYMS) }, label = { Text(term) })
+                }
             }
         }
     }

@@ -49,6 +49,7 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
                     TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
+                    if (GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
                     if (card.example.isNotEmpty()) Text(card.example, style = MaterialTheme.typography.bodyMedium)
                     if (card.tags.isNotEmpty()) Text(card.tags.joinToString(" · "),
                         style = MaterialTheme.typography.labelLarge)

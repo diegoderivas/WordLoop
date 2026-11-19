@@ -7,7 +7,7 @@ class SenseTranslationTest {
     @Test fun completeExpressionIsMarkedAndTheSelectedContextIsUsed() {
         val flight = Suggestion("To leave the ground.", "verb", "")
         assertEquals("\"to take off\" (To leave the ground.)", senseTranslationInput(" take  off ", flight))
-        assertNull(senseTranslationInput("take off", flight.copy(spanish = listOf("despegar"))))
+        assertEquals(senseTranslationInput("take off", flight), senseTranslationInput("take off", flight.copy(spanish = listOf("despegar"))))
         assertEquals("\"look up\" (Use the dictionary.)",
             senseTranslationInput("look up", Suggestion("", "noun", "", examples = listOf("Use the dictionary."))))
     }

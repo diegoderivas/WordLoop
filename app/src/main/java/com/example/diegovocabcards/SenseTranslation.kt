@@ -62,7 +62,6 @@ internal suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine 
 }
 
 internal fun senseTranslationInput(term: String, meaning: Suggestion): String? {
-    if (meaning.spanish.isNotEmpty()) return null
     val expression = term.trim().replace(Regex("\\s+"), " ")
     val context = meaning.definition.ifBlank { meaning.examples.firstOrNull().orEmpty() }
         .trim().replace(Regex("\\s+"), " ")
@@ -90,51 +89,36 @@ internal fun senseTranslationEquivalent(response: String, term: String, category
     return candidate
 }
 
+/** Each request belongs to the expression and sense keyed by the editor. */
 @Composable
-internal fun SenseTranslationOffer(
-    term: String,
-    sense: Suggestion,
-    enabled: Boolean,
-    translate: suspend (String, Suggestion) -> String?,
-    onUse: (String) -> Unit
+internal fun SuggestionRequest(
+    label: String, enabled: Boolean, fetch: suspend () -> List<String>,
+    content: @Composable (List<String>) -> Unit
 ) {
     var request by remember { mutableIntStateOf(0) }
     var working by remember { mutableStateOf(false) }
-    var attempted by remember { mutableStateOf(false) }
-    var proposal by remember { mutableStateOf<String?>(null) }
-
+    var result by remember { mutableStateOf<List<String>?>(null) }
     LaunchedEffect(request) {
         if (request == 0) return@LaunchedEffect
-        val result = try {
-            translate(term, sense)
+        val values = try {
+            fetch()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            null
+            emptyList()
         }
         currentCoroutineContext().ensureActive()
-        proposal = result
+        result = values
         working = false
-        attempted = true
     }
     Column {
-        val result = proposal
-        when {
-            working -> Text("Preparando traducción local. La primera vez puede tardar.",
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        TextButton(onClick = { focus.clearFocus(); working = true; request++ }, enabled = enabled && !working) { Text(label) }
+        if (working) Text("Consultando en el dispositivo…", style = MaterialTheme.typography.bodySmall)
+        result?.let {
+            if (it.isEmpty()) Text("Sin propuesta disponible. Podés reintentar o completar a mano.",
                 style = MaterialTheme.typography.bodySmall)
-            result != null -> {
-                Text("Sugerencia automática", style = MaterialTheme.typography.labelMedium)
-                TranslatedText(result, attributed = true)
-                TextButton(onClick = { onUse(result); proposal = null; attempted = false },
-                    enabled = enabled) { Text("Usar traducción") }
-            }
-            else -> {
-                if (attempted) Text("Sin una sugerencia para este sentido. Podés completar el español a mano.",
-                    style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { working = true; request++ }, enabled = enabled) { Text("Traducir con Google") }
-                if (!attempted) Text("La primera vez descarga el modelo por Wi-Fi.",
-                    style = MaterialTheme.typography.bodySmall)
-            }
+            else content(it)
         }
     }
 }

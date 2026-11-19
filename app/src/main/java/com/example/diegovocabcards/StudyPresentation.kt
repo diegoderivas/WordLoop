@@ -65,17 +65,20 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (spanishFirst) card.spanish else card.english,
                     style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                if (!spanishFirst) IpaContent(card.ipa, card.ipaSource)
                 if (spanishFirst && attributed) TranslationAttribution()
+                if (spanishFirst && GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
             }
             if (revealed) {
                 HorizontalDivider()
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(if (spanishFirst) card.english else card.spanish,
                         style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                    if (spanishFirst) IpaContent(card.ipa, card.ipaSource)
                     if (!spanishFirst && attributed) TranslationAttribution()
+                    if (!spanishFirst && GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
                 }
                 PronunciationButton(card.english)
-                IpaContent(card.ipa, card.ipaSource)
                 if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
                 SavedUsageContent(card.usageNote, card.generatedExamples)
             }
