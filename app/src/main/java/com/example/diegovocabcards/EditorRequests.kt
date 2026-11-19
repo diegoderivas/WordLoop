@@ -50,6 +50,18 @@ internal class EditorSenseRequests(scope: CoroutineScope, guideScope: CoroutineS
 internal class EditorRequests(private val scope: CoroutineScope, private val guideScope: CoroutineScope = scope) {
     private val senses = mutableMapOf<Suggestion, EditorSenseRequests>()
     val nano = Mutex()
+    private var savedGuide: Deferred<UsageNoteResult>? = null
+
+    fun retainForSave(guide: Deferred<UsageNoteResult>?): Deferred<UsageNoteResult>? {
+        savedGuide = guide
+        return guide
+    }
+
+    fun closeDraft() {
+        for (requests in senses.values) {
+            requests.guide.pending?.takeUnless { it === savedGuide }?.cancel()
+        }
+    }
 
     fun forSense(sense: Suggestion): EditorSenseRequests =
         senses.getOrPut(sense) { EditorSenseRequests(scope, guideScope) }

@@ -74,7 +74,9 @@ internal fun SwipeCardActions(
                         true
                     })
                 },
-            content = content
+            content = {
+                Column(Modifier.fillMaxWidth().padding(start = if (revealed) actionWidth else 0.dp), content = content)
+            }
         )
     }
 }

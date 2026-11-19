@@ -23,6 +23,10 @@ class PronunciationTest {
         val missing = voice("missing", Locale.UK, features = setOf(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED))
         val spanish = voice("spanish", Locale.forLanguageTag("es-AR"))
         assertEquals(listOf(uk, us), localEnglishVoices(setOf(us, online, missing, spanish, uk)))
+        val au = voice("au", Locale.forLanguageTag("en-AU"))
+        assertEquals(au, localEnglishVoices(setOf(uk, us, au), "au").first())
+        assertEquals(us, localEnglishVoices(setOf(uk, us, au), "us").first())
+        assertEquals(uk, localEnglishVoices(setOf(uk, us), "au").first())
         assertEquals(listOf(us), localEnglishVoices(setOf(online, missing, us)))
         assertTrue(localEnglishVoices(setOf(online, missing, spanish)).isEmpty())
     }

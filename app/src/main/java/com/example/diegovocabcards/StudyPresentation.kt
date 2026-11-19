@@ -80,6 +80,12 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
             } else {
                 EnglishStudyText(card, questionStyle)
             }
+            if (!revealed) {
+                val library = LocalStudyCards.current
+                remember(card, library, spanishFirst) { studyHint(card, library, spanishFirst) }?.let {
+                    Text("Pista · $it", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                }
+            }
             if (revealed) {
                 HorizontalDivider()
                 if (spanishFirst) {

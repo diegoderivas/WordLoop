@@ -23,14 +23,14 @@ import com.example.diegovocabcards.data.Card
 internal fun Library(
     cards: List<Card>, knownTags: List<String>, highlighted: String?,
     onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit,
-    onProgress: (String) -> Unit = {}
+    onProgress: (String) -> Unit = {},
+    filter: String? = null, onFilter: (String?) -> Unit = {}, onPractice: (String) -> Unit = {}
 ) {
     var exposedId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var search by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf<String?>(null) }
     Button(onClick = onAdd) { Text("Añadir tarjeta") }
     if (deleteFailed) Text("No se pudo borrar la tarjeta. Podés intentarlo de nuevo.", color = MaterialTheme.colorScheme.error)
     if (cards.isEmpty()) {
@@ -39,12 +39,13 @@ internal fun Library(
     }
     OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(),
         label = { Text("Buscar en inglés o español") }, singleLine = true)
-    if (knownTags.isNotEmpty()) {
+    if (knownTags.isNotEmpty() || filter != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TagMenu(filter ?: "Filtrar por etiqueta", knownTags) { filter = it }
-            if (filter != null) TextButton(onClick = { filter = null }) { Text("Quitar filtro") }
+            TagMenu(filter ?: "Filtrar por etiqueta", knownTags, onChoose = onFilter)
+            if (filter != null) TextButton(onClick = { onFilter(null) }) { Text("Quitar filtro") }
         }
     }
+    if (filter != null) TextButton(onClick = { onPractice(filter) }) { Text("Practicar esta etiqueta") }
     val visible = remember(cards, search, filter, highlighted) {
         val query = search.trim()
         cards.filter { card ->

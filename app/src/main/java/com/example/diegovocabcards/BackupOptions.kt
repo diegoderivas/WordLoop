@@ -6,7 +6,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.*
@@ -15,6 +14,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+
+private fun backupCounts(senses: Int, events: Int): String {
+    val cards = if (senses == 1) "1 acepción" else "$senses acepciones"
+    val grades = if (events == 1) "1 calificación" else "$events calificaciones"
+    return "$cards y $grades"
+}
 
 @Composable
 internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
@@ -28,7 +33,7 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
         if (busy) return
         busy = true
         message = ""
-        scope.launch {
+        scope.launch(Dispatchers.Main.immediate) {
             try { action() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
@@ -67,8 +72,8 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
         AlertDialog(onDismissRequest = { if (!busy) preview = null }, title = { Text("Restaurar biblioteca") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Se reemplazarán ${currentCounts.first} acepciones, ${currentCounts.second} calificaciones y los ajustes actuales.")
-                    Text("La copia contiene ${incoming.senses.size} acepciones y ${incoming.history.size} calificaciones.")
+                    Text("Contenido actual: ${backupCounts(currentCounts.first, currentCounts.second)}. Al restaurar se reemplazan la biblioteca y los ajustes.")
+                    Text("La copia contiene ${backupCounts(incoming.senses.size, incoming.history.size)}.")
                     if (currentCounts.first > 0) TextButton(onClick = ::exportCurrent, enabled = !busy) {
                         Text("Exportar una copia previa")
                     }

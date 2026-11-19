@@ -50,21 +50,27 @@ internal enum class SpeechState { Idle, Loading, Speaking, Unavailable }
 internal interface PronunciationPlayer {
     val state: SpeechState
     val requestedText: String?
+    val voices: List<Voice> get() = emptyList()
+    fun refreshVoices() {}
     fun speak(text: String)
     fun stop()
 }
 
-internal fun localEnglishVoices(voices: Set<Voice>): List<Voice> = voices
+internal fun localEnglishVoices(voices: Set<Voice>, preferred: String = ""): List<Voice> = voices
     .filter {
         it.locale.language == Locale.ENGLISH.language && !it.isNetworkConnectionRequired &&
             TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features.orEmpty()
     }
-    .sortedWith(compareByDescending<Voice> { it.locale.country == Locale.UK.country }
+    .sortedWith(compareByDescending<Voice> { it.name == preferred }
+        .thenByDescending { it.locale.country == Locale.UK.country }
         .thenByDescending { it.quality }.thenBy { it.name })
 
 internal class AndroidPronunciation(private val context: Context) : PronunciationPlayer {
     private val main = Handler(Looper.getMainLooper())
     private var engine: TextToSpeech? = null
+    var preferredVoice = ""
+    override var voices by mutableStateOf(emptyList<Voice>())
+        private set
     private var ready = false
     private var pending: String? = null
     private var utterance: String? = null
@@ -90,6 +96,15 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
         }
         pending = phrase
         state = SpeechState.Loading
+        initialize()
+    }
+
+    override fun refreshVoices() {
+        if (ready) voices = localEnglishVoices(engine?.voices.orEmpty())
+        else initialize()
+    }
+
+    private fun initialize() {
         if (engine != null) return
         val attempt = ++generation
         engine = TextToSpeech(context) { result ->
@@ -103,10 +118,8 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
     private fun finishInitialization(result: Int) {
         main.removeCallbacks(timeout)
         val tts = engine
-        if (tts == null || result != TextToSpeech.SUCCESS ||
-            !runCatching {
-                localEnglishVoices(tts.voices.orEmpty()).any { tts.setVoice(it) == TextToSpeech.SUCCESS }
-            }.getOrDefault(false)) {
+        voices = if (result == TextToSpeech.SUCCESS) localEnglishVoices(tts?.voices.orEmpty()) else emptyList()
+        if (tts == null || voices.isEmpty()) {
             failInitialization()
             return
         }
@@ -122,6 +135,12 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
     }
 
     private fun play(text: String) {
+        val tts = engine ?: return
+        val available = localEnglishVoices(tts.voices.orEmpty(), preferredVoice)
+        if (available.none { tts.voice == it || tts.setVoice(it) == TextToSpeech.SUCCESS }) {
+            failInitialization()
+            return
+        }
         val id = UUID.randomUUID().toString()
         utterance = id
         state = SpeechState.Speaking
@@ -167,9 +186,10 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
 internal val LocalPronunciationPlayer = staticCompositionLocalOf<PronunciationPlayer?> { null }
 
 @Composable
-internal fun ProvideAndroidPronunciation(lifecycle: Lifecycle, content: @Composable () -> Unit) {
+internal fun ProvideAndroidPronunciation(lifecycle: Lifecycle, preferredVoice: String = "", content: @Composable () -> Unit) {
     val context = LocalContext.current.applicationContext
     val player = remember(context) { AndroidPronunciation(context) }
+    SideEffect { player.preferredVoice = preferredVoice }
     DisposableEffect(player, lifecycle) {
         val observer = object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) { player.stop() }

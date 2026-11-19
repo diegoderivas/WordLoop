@@ -258,6 +258,51 @@ class UsageNoteEditorTest {
         } finally { release.complete(Unit); db.close() }
     }
 
+    @Test fun duplicateNoticesExcludeSelfAndCancelledGuideDoesNotWrite() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val visible = androidx.compose.runtime.mutableStateOf(true)
+        val finish = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        try {
+            runBlocking {
+                db.vocabulary().save("editing", "take off", "despegar", "", "")
+                db.vocabulary().save("manual", "take off", "despegar", "", "")
+                db.vocabulary().save("clothes", "take off", "quitarse", "", "", definition = removing.definition,
+                    senseCategories = removing.category)
+            }
+            val before = runBlocking { db.vocabulary().cards().first() }
+            val original = before.first { it.id == "editing" }
+            val model = VocabularyModel(app, db)
+            compose.setContent {
+                if (visible.value) Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(original, original.english, emptyList(), emptyList(), model,
+                        lookup = { listOf(flight, removing) }, nanoOptions = { _, _, _ -> emptyList() },
+                        usageNotes = { _, _, _ ->
+                            started.complete(Unit)
+                            finish.await()
+                            UsageNoteResult.Ready(note)
+                        }) {}
+                }
+            }
+            waitFor(flight.definition)
+            tap(flight.definition)
+            waitFor("Posible duplicado · Ver tarjetas (2)")
+            compose.waitUntil { started.isCompleted }
+            tap(removing.definition)
+            // Keep the existing Spanish translation if the editor asks before replacing it.
+            if (compose.onAllNodesWithText("Conservar mis campos").fetchSemanticsNodes().isNotEmpty()) {
+                compose.onNodeWithText("Conservar mis campos").performClick()
+            }
+            waitFor("Ya tenés esta acepción · Ver tarjetas (2)")
+            compose.runOnIdle { visible.value = false }
+            compose.waitForIdle()
+            finish.complete(Unit)
+            compose.waitForIdle()
+            assertEquals(before, runBlocking { db.vocabulary().cards().first() })
+        } finally { finish.complete(Unit); db.close() }
+    }
+
     private fun showEditor(
         model: VocabularyModel,
         lookup: suspend (String) -> List<Suggestion>,

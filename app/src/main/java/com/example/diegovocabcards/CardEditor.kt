@@ -135,6 +135,7 @@ internal fun CardEditor(
     val selected = suggestions.firstOrNull { it.selectionKey() == selectedKey }
     val scope = key(id, currentQuery) { rememberCoroutineScope() }
     val requests = remember(scope) { EditorRequests(scope, model.guideScope) }
+    DisposableEffect(requests) { onDispose { requests.closeDraft() } }
     // A saved card also supplies a context for manually requested translations.
     val providerSense = selected ?: original?.takeIf { it.english == currentQuery }?.let {
         Suggestion(it.definition.ifBlank { it.spanish }, it.senseCategories, it.source,
@@ -284,7 +285,8 @@ internal fun CardEditor(
     }
     fun save(next: AfterSave) {
         focus.clearFocus()
-        model.save(draft, next, editedEntryCategories, providers?.guide?.pending.takeIf { selected != null })
+        val pending = providers?.guide?.pending.takeIf { selected != null && draft.usageNote.isBlank() }
+        model.save(draft, next, editedEntryCategories, requests.retainForSave(pending))
     }
 
     EnglishPronunciation(currentQuery, ipa) {
@@ -309,10 +311,12 @@ internal fun CardEditor(
     if (matches.isNotEmpty()) {
         val exact = selected?.let { sense -> matches.any { card ->
             sense.definition.isNotBlank() && senseText(card.definition) == senseText(sense.definition) &&
-                card.senseCategories.equals(sense.category, true)
+                card.senseCategories.equals(sense.category, true) &&
+                (sense.spanish.isEmpty() || sense.spanish.any { senseText(it) == senseText(card.spanish) })
         } } == true
         val possible = selected?.let { sense -> matches.any { card ->
-            card.definition.isBlank() || sense.spanish.any { senseText(it) == senseText(card.spanish) }
+            card.definition.isBlank() || senseText(card.definition) == senseText(sense.definition) ||
+                sense.spanish.any { senseText(it) == senseText(card.spanish) }
         } } == true
         val message = when {
             exact -> "Ya tenés esta acepción"

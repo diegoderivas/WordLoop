@@ -1,6 +1,7 @@
 package com.example.diegovocabcards
 
 import android.os.Bundle
+import kotlinx.coroutines.flow.map
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,10 +22,10 @@ class MainActivity : ComponentActivity() {
         val reviewPreferences = getSharedPreferences("review", MODE_PRIVATE)
         val legacy = LibrarySettings(theme = Appearance.fromKey(preferences.getString("theme", null)).key,
             automaticSpeech = reviewPreferences.getBoolean("automatic_voice", true), review = reviewPreferences.readReviewSettings())
-        val settingsFlow = vocabulary.backup.observeSettings()
+        val settingsFlow = vocabulary.backup.observeSettings().map { it ?: legacy }
         setContent {
             val stored by settingsFlow.collectAsState(initial = null)
-            val settings = stored ?: legacy
+            val settings = stored ?: return@setContent
             val mode = Appearance.fromKey(settings.theme)
             val dark = mode.isDark(isSystemInDarkTheme())
             SideEffect {
@@ -34,9 +35,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
             DiegoVocabCardsTheme(darkTheme = dark) {
-                ProvideAndroidPronunciation(lifecycle) {
+                ProvideAndroidPronunciation(lifecycle, settings.voice) {
                     VocabCardsApp(mode, vocabulary, settings.review, automaticSpeech = settings.automaticSpeech,
                         backupDefaults = settings,
+                        onVoiceChange = { name -> vocabulary.configure(legacy) { it.copy(voice = name) } },
                         onAutomaticSpeech = { value -> vocabulary.configure(legacy) { it.copy(automaticSpeech = value) } },
                         onReviewSettingsChange = { value -> vocabulary.configure(legacy) { it.copy(review = value) } }
                     ) { selected ->

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.review.ReviewSettings
 
+internal val LocalStudyCards = compositionLocalOf { emptyList<Card>() }
 internal val LocalAutomaticSpeech = compositionLocalOf { true }
 
 private enum class Screen(val title: String) {
@@ -42,6 +44,7 @@ internal fun VocabCardsApp(
     guideGenerator: UsageNoteGenerator = NanoUsageNotes,
     automaticSpeech: Boolean = true,
     backupDefaults: com.example.diegovocabcards.data.LibrarySettings = com.example.diegovocabcards.data.LibrarySettings(),
+    onVoiceChange: (String) -> Unit = {},
     onAutomaticSpeech: (Boolean) -> Unit = {},
     onModeChange: (Appearance) -> Unit
 ) {
@@ -52,6 +55,8 @@ internal fun VocabCardsApp(
     val schedules by scheduleFlow.collectAsState(initial = null)
     val queues = rememberReviewQueues(rows, schedules, clock)
     var direction by rememberSaveable { mutableStateOf(Direction.ES_EN) }
+    var libraryTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var manualTag by rememberSaveable { mutableStateOf<String?>(null) }
     var studyOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     var settingsOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     val mainScreen = mainTabs.any { it.first == screen }
@@ -93,7 +98,7 @@ internal fun VocabCardsApp(
         Screen.ReviewOptions -> Screen.Settings
         Screen.Settings -> settingsOrigin
         Screen.Study -> studyOrigin
-        Screen.Manual -> Screen.Review
+        Screen.Manual -> if (manualTag != null) Screen.Library else Screen.Review
         else -> Screen.Home
     }
     val back = {
@@ -108,6 +113,7 @@ internal fun VocabCardsApp(
             val card = result.card
             when (result.next) {
                 AfterSave.Library -> {
+                    libraryTag = null
                     highlighted = card.id
                     screen = Screen.Library
                 }
@@ -119,7 +125,7 @@ internal fun VocabCardsApp(
         }
     }
 
-    CompositionLocalProvider(LocalAutomaticSpeech provides automaticSpeech) {
+    CompositionLocalProvider(LocalAutomaticSpeech provides automaticSpeech, LocalStudyCards provides rows.orEmpty()) {
     Scaffold(
         topBar = {
             Surface(color = MaterialTheme.colorScheme.surface) {
@@ -182,7 +188,9 @@ internal fun VocabCardsApp(
                         var progressId by rememberSaveable { mutableStateOf<String?>(null) }
                         progressId?.let { ReviewDetails(it, model.reviews) { progressId = null } }
                         Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
-                        onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it })
+                        onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it },
+                            filter = libraryTag, onFilter = { libraryTag = it },
+                            onPractice = { manualTag = it; screen = Screen.Manual })
                     }
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
                         onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
@@ -201,13 +209,16 @@ internal fun VocabCardsApp(
                         if (cards.orEmpty().isEmpty()) {
                             TextButton(onClick = { add(Screen.Review) }) { Text("Añadir tarjeta") }
                         } else {
-                            TextButton(onClick = { screen = Screen.Manual }) {
+                            TextButton(onClick = { manualTag = null; screen = Screen.Manual }) {
                                 Text("Práctica manual sin calificar")
                             }
                         }
                     }
                     Screen.Manual -> sessionState.SaveableStateProvider(Screen.Manual.name) {
-                        Practice(cards.orEmpty(), studyTools) { add(Screen.Manual) }
+                        val selectedCards = cards.orEmpty().filter { card ->
+                            manualTag == null || card.tags.any { it.equals(manualTag, true) }
+                        }
+                        Practice(selectedCards, studyTools) { add(Screen.Manual) }
                     }
                     Screen.Study -> {
                         val queue = queues?.get(direction)
@@ -223,10 +234,12 @@ internal fun VocabCardsApp(
                     }
                     Screen.Settings -> {
                         OutlinedButton(onClick = { screen = Screen.ReviewOptions }) { Text("Ajustes de repaso") }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().toggleable(value = automaticSpeech, role = Role.Switch,
+                            onValueChange = onAutomaticSpeech).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Pronunciación automática", Modifier.weight(1f))
-                            Switch(automaticSpeech, onCheckedChange = onAutomaticSpeech)
+                            Switch(automaticSpeech, onCheckedChange = null)
                         }
+                        VoiceOptions(backupDefaults.voice, onVoiceChange)
                         AppearanceOptions(mode, onModeChange)
                         BackupOptions(model.backup, backupDefaults)
                     }
