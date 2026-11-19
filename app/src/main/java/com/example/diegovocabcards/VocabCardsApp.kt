@@ -8,6 +8,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.example.diegovocabcards.data.Card
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +37,7 @@ internal fun VocabCardsApp(
     reviewSettings: ReviewSettings = ReviewSettings(),
     onReviewSettingsChange: (ReviewSettings) -> Unit = {},
     clock: Clock = Clock.systemUTC(),
+    guideGenerator: UsageNoteGenerator = NanoUsageNotes,
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
@@ -53,6 +56,16 @@ internal fun VocabCardsApp(
         screen = Screen.Study
     }
     var editId by rememberSaveable { mutableStateOf<String?>(null) }
+    val sessionState = rememberSaveableStateHolder()
+    var editOrigin by rememberSaveable { mutableStateOf(Screen.Library) }
+    fun editCard(id: String) {
+        editId = id
+        editOrigin = screen
+        screen = Screen.Edit
+    }
+    val studyTools: @Composable (Card) -> Unit = { card ->
+        ReviewCardTools(card, model, guideGenerator) { editCard(card.id) }
+    }
     var highlighted by rememberSaveable { mutableStateOf<String?>(null) }
     val knownTags = remember(rows) {
         rows.orEmpty().flatMap { it.tags }.distinctBy { it.lowercase() }.sortedWith(String.CASE_INSENSITIVE_ORDER)
@@ -70,7 +83,7 @@ internal fun VocabCardsApp(
     }
     fun add(from: Screen) = newDraft("", null, from)
     val backTo = when (screen) {
-        Screen.Edit -> Screen.Library
+        Screen.Edit -> editOrigin
         Screen.Add -> parent
         Screen.ReviewOptions -> Screen.Settings
         Screen.Settings -> settingsOrigin
@@ -79,7 +92,10 @@ internal fun VocabCardsApp(
         else -> Screen.Home
     }
     val back = {
-        if (!model.saving && model.saved == null) screen = backTo
+        if (!model.saving && model.saved == null) {
+            if (screen == Screen.Manual || screen == Screen.Study) sessionState.removeState(screen.name)
+            screen = backTo
+        }
     }
     BackHandler(enabled = !home, onBack = back)
     LaunchedEffect(model.saved) {
@@ -90,6 +106,7 @@ internal fun VocabCardsApp(
                     highlighted = card.id
                     screen = Screen.Library
                 }
+                AfterSave.Study -> screen = editOrigin
                 AfterSave.AnotherCard -> newDraft("", card.tags, Screen.Library)
                 AfterSave.AnotherSense -> newDraft(card.english, card.tags, Screen.Library)
             }
@@ -155,16 +172,14 @@ internal fun VocabCardsApp(
                             Text("Añadir tarjeta")
                         }
                     }
-                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }) {
-                        editId = it
-                        screen = Screen.Edit
-                    }
+                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }, onEdit = ::editCard)
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
                         TextButton(onClick = { showProgress = true }) { Text("Progreso de repaso") }
                         if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
-                        CardEditor(original, original.english, original.tags, knownTags, model) {
+                        CardEditor(original, original.english, original.tags, knownTags, model,
+                            fromStudy = editOrigin == Screen.Study || editOrigin == Screen.Manual) {
                             newDraft(it.english, it.tags, Screen.Library)
                         }
                     }
@@ -178,13 +193,18 @@ internal fun VocabCardsApp(
                             }
                         }
                     }
-                    Screen.Manual -> Practice(cards.orEmpty()) { add(Screen.Manual) }
+                    Screen.Manual -> sessionState.SaveableStateProvider(Screen.Manual.name) {
+                        Practice(cards.orEmpty(), studyTools) { add(Screen.Manual) }
+                    }
                     Screen.Study -> {
                         val queue = queues?.get(direction)
                         val loadedSchedules = schedules
                         if (queue != null && loadedSchedules != null) {
-                            ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings) {
-                                screen = Screen.Home
+                            sessionState.SaveableStateProvider(Screen.Study.name) {
+                                ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools) {
+                                    sessionState.removeState(Screen.Study.name)
+                                    screen = Screen.Home
+                                }
                             }
                         } else Text("Cargando repasos…")
                     }

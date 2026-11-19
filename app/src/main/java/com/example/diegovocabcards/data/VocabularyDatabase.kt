@@ -63,6 +63,14 @@ internal abstract class VocabularyDao {
     @Query("SELECT id, english, spanish, example, definition, synonyms, senseCategories, entryCategories, source, usageNote, generatedExamples, ipa, ipaSource FROM Sense JOIN Entry USING(entryId) ORDER BY Sense.rowid DESC")
     abstract fun cards(): Flow<List<Card>>
 
+    /** Compare the inputs used for generation in the same write that installs the guide. */
+    @Query("""UPDATE Sense SET usageNote = :note WHERE id = :id AND usageNote = ''
+        AND entryId = (SELECT entryId FROM Entry WHERE english = :english)
+        AND spanish = :spanish AND definition = :definition AND senseCategories = :category
+        AND example = :example AND generatedExamples = :generatedExamples""")
+    abstract suspend fun saveMissingGuide(id: String, english: String, spanish: String,
+        definition: String, category: String, example: String, generatedExamples: String, note: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun insertEntry(entry: Entry): Long
 

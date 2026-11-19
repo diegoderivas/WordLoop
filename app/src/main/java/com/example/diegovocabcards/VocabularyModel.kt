@@ -11,7 +11,7 @@ import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.VocabularyDatabase
 import kotlinx.coroutines.launch
 
-internal enum class AfterSave { Library, AnotherCard, AnotherSense }
+internal enum class AfterSave { Library, AnotherCard, AnotherSense, Study }
 internal data class SavedCard(val card: Card, val next: AfterSave)
 
 internal class VocabularyModel(app: Application, database: VocabularyDatabase) : AndroidViewModel(app) {
@@ -27,6 +27,10 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
         private set
     var failedId by mutableStateOf<String?>(null)
         private set
+
+    suspend fun saveMissingGuide(card: Card, note: UsageNote): Boolean =
+        dao.saveMissingGuide(card.id, card.english, card.spanish, card.definition, card.senseCategories,
+            card.example, card.generatedExamples, note.forStorage()) == 1
 
     fun acknowledgeSave() { saved = null }
 

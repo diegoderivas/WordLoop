@@ -55,6 +55,7 @@ internal fun CardEditor(
     translate: suspend (String, Suggestion) -> String? = LocalSenseTranslation::suggest,
     nanoOptions: suspend (String, Suggestion, SenseRequest) -> List<String> = ::nanoSenseOptions,
     usageNotes: UsageNoteGenerator = NanoUsageNotes,
+    fromStudy: Boolean = false,
     onAnotherSense: (Card) -> Unit
 ) {
     val id = rememberSaveable { original?.id ?: UUID.randomUUID().toString() }
@@ -466,12 +467,12 @@ internal fun CardEditor(
     }
     if (model.failedId == id) Text("No se pudo guardar. Podés volver a intentarlo.",
         color = MaterialTheme.colorScheme.error)
-    Button(onClick = { save(AfterSave.Library) }, enabled = valid) { Text("Guardar") }
+    Button(onClick = { save(if (fromStudy) AfterSave.Study else AfterSave.Library) }, enabled = valid) { Text("Guardar") }
     if (original == null) {
         OutlinedButton(onClick = { save(AfterSave.AnotherCard) }, enabled = valid) {
             Text("Guardar y añadir otra")
         }
-    } else {
+    } else if (!fromStudy) {
         OutlinedButton(onClick = {
             if (draft == original) onAnotherSense(original) else confirm = true
         }, enabled = !busy) { Text("Añadir otra acepción") }

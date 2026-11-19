@@ -60,7 +60,7 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
 }
 
 @Composable
-internal fun Practice(cards: List<Card>, onAdd: () -> Unit) {
+internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit = {}, onAdd: () -> Unit) {
     var spanishFirst by rememberSaveable { mutableStateOf(true) }
     var session by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     var index by rememberSaveable { mutableIntStateOf(0) }
@@ -70,7 +70,7 @@ internal fun Practice(cards: List<Card>, onAdd: () -> Unit) {
     if (ids != null && card != null) {
         key(card.id, index) {
             StudyPresentation(card, spanishFirst, revealed, "Tarjeta ${index + 1} de ${ids.size}",
-                onReveal = { revealed = true }) {
+                onReveal = { revealed = true }, cardTools = cardTools) {
                 Button(onClick = { revealed = false; index++ }, modifier = Modifier.fillMaxWidth()) {
                     Text("Siguiente")
                 }

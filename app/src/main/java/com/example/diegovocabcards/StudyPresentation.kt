@@ -19,18 +19,20 @@ internal fun StudyPresentation(
     revealed: Boolean,
     caption: String,
     onReveal: () -> Unit,
+    cardTools: @Composable (Card) -> Unit = {},
     actions: @Composable ColumnScope.() -> Unit
 ) {
     val player = LocalPronunciationPlayer.current
     DisposableEffect(player, card.id) { onDispose { player?.stop() } }
     if (revealed) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(caption, style = MaterialTheme.typography.labelLarge)
-            StudyTile(card, spanishFirst, revealed = true)
-            actions()
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(caption, style = MaterialTheme.typography.labelLarge)
+                cardTools(card)
+                StudyTile(card, spanishFirst, revealed = true)
+            }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
         }
     } else {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -80,7 +82,7 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
                 }
                 PronunciationButton(card.english)
                 if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
-                SavedUsageContent(card.usageNote, card.generatedExamples)
+                SavedUsageContent("", card.generatedExamples)
             }
         }
     }

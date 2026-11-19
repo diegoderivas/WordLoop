@@ -109,6 +109,7 @@ internal fun ScheduledReview(
     dao: ReviewDao,
     clock: Clock,
     settings: ReviewSettings,
+    cardTools: @Composable (Card) -> Unit,
     onHome: () -> Unit
 ) {
     var currentId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -139,7 +140,7 @@ internal fun ScheduledReview(
         }
     } else {
         key(question.card.id, turn) {
-            StudyQuestion(question.card, direction, question.turn, dao, clock, settings) { rating, revealedAt ->
+            StudyQuestion(question.card, direction, question.turn, dao, clock, settings, cardTools) { rating, revealedAt ->
                 dao.rate(question.card.id, direction, question.turn, rating, clock.millis(), settings, revealedAt)
             }
         }
@@ -154,6 +155,7 @@ private fun StudyQuestion(
     dao: ReviewDao,
     clock: Clock,
     settings: ReviewSettings,
+    cardTools: @Composable (Card) -> Unit,
     onRate: suspend (Rating, Long) -> Unit
 ) {
     var revealedAt by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -165,7 +167,7 @@ private fun StudyQuestion(
     StudyPresentation(
         card, spanishFirst, revealed = at != null,
         caption = "${direction.label} · ${if (turn == 0) "Nueva" else "Pendiente"}",
-        onReveal = { revealedAt = clock.millis() }
+        onReveal = { revealedAt = clock.millis() }, cardTools = cardTools
     ) {
         if (at != null) {
             if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
