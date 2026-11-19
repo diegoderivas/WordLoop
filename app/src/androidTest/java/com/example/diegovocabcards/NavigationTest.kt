@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.test.espresso.Espresso.pressBack
 import androidx.compose.ui.test.assertIsSelected
@@ -14,12 +16,12 @@ class NavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun openSectionsAndRestoreSettings() {
-        compose.onNodeWithText("Biblioteca").performClick().assertIsSelected()
+        compose.onNode(hasText("Biblioteca") and hasClickAction()).performClick().assertIsSelected()
         pressBack()
         compose.onNodeWithText("Inicio").assertIsSelected()
         compose.onNodeWithText("Añadir tarjeta").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Volver").performClick()
-        compose.onNodeWithText("Repasar").performClick().assertIsSelected()
+        compose.onNode(hasText("Repasar") and hasClickAction()).performClick().assertIsSelected()
         compose.onNodeWithContentDescription("Configuración").performClick()
         compose.onNodeWithText("Oscuro").performScrollTo().performClick()
         compose.activityRule.scenario.recreate()

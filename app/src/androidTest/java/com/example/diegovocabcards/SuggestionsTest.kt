@@ -19,6 +19,64 @@ import org.junit.Test
 class SuggestionsTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun switchingMeaningKeepsOnlyTheNewAutomaticFieldsAndSavesOffline() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        try {
+            val model = VocabularyModel(app, db)
+            val work = Suggestion("Give someone a job", "verb", "SOURCE",
+                listOf("contratar"), listOf("They hired a technician.", "We hired more staff."), listOf("employ"))
+            val rent = Suggestion("Pay to use a vehicle", "verb", "SOURCE",
+                listOf("alquilar"), listOf("They hired a van."), listOf("rent"))
+            val incomplete = Suggestion("Accept employment", "verb", "SOURCE")
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(null, "", emptyList(), emptyList(), model, lookup = { query ->
+                        if (query == "offline") throw java.io.IOException("disconnected")
+                        listOf(work, work, rent, incomplete, Suggestion("Payment", "noun", "SOURCE"))
+                    }) {}
+                }
+            }
+            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            fun waitFor(label: String, substring: Boolean = false) {
+                compose.waitUntil(5000) {
+                    compose.onAllNodesWithText(label, substring = substring).fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+
+            val english = compose.onNodeWithText("Palabra o expresión en inglés")
+            english.performTextInput("hire")
+            waitFor(work.definition)
+            compose.onAllNodesWithText(work.definition).assertCountEquals(1)
+            compose.onNodeWithText("Payment").assertDoesNotExist()
+            compose.onNodeWithText("Ver más significados").assertExists()
+            tap(work.definition)
+            tap("Detalles opcionales")
+            tap("Añadir ejemplo sugerido")
+            compose.onNodeWithText("We hired more staff.").performClick()
+            compose.onNodeWithText("They hired a technician.\nWe hired more staff.").assertExists()
+            tap(rent.definition)
+            compose.onNodeWithText("They hired a van.").assertExists()
+            compose.onNodeWithText("employ").assertDoesNotExist()
+            compose.onNodeWithText("rent").assertExists()
+            tap(incomplete.definition)
+            compose.onNodeWithText("They hired a van.").assertDoesNotExist()
+            compose.onNodeWithText("rent").assertDoesNotExist()
+            compose.onNodeWithText("Guardar").assertIsNotEnabled()
+            english.performScrollTo().performTextReplacement("offline")
+            waitFor("No se pudo consultar", substring = true)
+            compose.onNodeWithText("Traducción al español").performScrollTo().performTextInput("sin conexión")
+            tap("Guardar")
+            compose.waitUntil(5000) { model.saved != null }
+            val saved = runBlocking { db.vocabulary().cards().first().single() }
+            assertEquals("sin conexión", saved.spanish)
+            assertEquals("", saved.definition)
+            assertEquals("", saved.source)
+        } finally {
+            db.close()
+        }
+    }
+
     @Test fun staleResultsAndManualCorrectionsAreProtected() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
@@ -31,7 +89,8 @@ class SuggestionsTest {
                         started.set(true)
                         withContext(NonCancellable) { delay(1500) }
                     }
-                    listOf(Suggestion("Definition for $query", "Example for $query", "", "verb", "TEST DATA"))
+                    listOf(Suggestion("Definition for $query", "verb", "TEST DATA",
+                        examples = listOf("Example for $query")))
                 }) {}
             }
         }

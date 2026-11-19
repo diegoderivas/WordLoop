@@ -1,6 +1,10 @@
 package com.example.diegovocabcards
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -9,11 +13,39 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import java.util.UUID
 import kotlinx.coroutines.ensureActive
+
+internal enum class MeaningField { Spanish, Definition, Categories, Example, Synonyms }
+
+internal fun fieldsFrom(suggestion: Suggestion): Map<MeaningField, String> = mapOf(
+    MeaningField.Spanish to suggestion.spanish.firstOrNull().orEmpty(),
+    MeaningField.Definition to suggestion.definition,
+    MeaningField.Categories to suggestion.category,
+    MeaningField.Example to suggestion.examples.firstOrNull().orEmpty(),
+    MeaningField.Synonyms to suggestion.synonymOptions.firstOrNull().orEmpty()
+)
+
+internal fun mergeMeaningFields(
+    current: Map<MeaningField, String>,
+    incoming: Map<MeaningField, String>,
+    automatic: Set<MeaningField>,
+    manuallyEdited: Set<MeaningField>,
+    replaceManual: Boolean
+): Map<MeaningField, String> = current.mapValues { (field, existing) ->
+    val suggested = incoming.getValue(field)
+    when {
+        field in automatic -> suggested
+        suggested.isBlank() -> existing
+        replaceManual || (existing.isBlank() && field !in manuallyEdited) -> suggested
+        else -> existing
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -33,52 +65,87 @@ internal fun CardEditor(
     val localCards by model.cards.collectAsState(initial = emptyList())
     var editedEntryCategories by rememberSaveable(english.trim()) { mutableStateOf<String?>(null) }
     val entryCategories = editedEntryCategories ?: localCards.firstOrNull { it.english == english.trim() }?.entryCategories.orEmpty()
-    var changedFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    fun markChanged(field: String) {
-        if (field !in changedFields) changedFields = ArrayList(changedFields + field)
+    var manualFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var automaticFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var retainedSource by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
+    var activeSource by rememberSaveable { mutableStateOf("") }
+    val currentValues = mapOf(
+        MeaningField.Spanish to spanish, MeaningField.Definition to definition,
+        MeaningField.Categories to senseCategories, MeaningField.Example to example,
+        MeaningField.Synonyms to synonyms
+    )
+    val automatic = MeaningField.entries.filter { it.name in automaticFields }.toSet()
+    val manual = MeaningField.entries.filter { it.name in manualFields }.toSet()
+    fun setValue(field: MeaningField, value: String) {
+        when (field) {
+            MeaningField.Spanish -> spanish = value
+            MeaningField.Definition -> definition = value
+            MeaningField.Categories -> senseCategories = value
+            MeaningField.Example -> example = value
+            MeaningField.Synonyms -> synonyms = value
+        }
     }
-    fun wouldReplace(field: String, current: String, suggested: String): Boolean =
-        suggested.isNotBlank() && current != suggested && (current.isNotBlank() || field in changedFields)
-    var source by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
+    fun editValue(field: MeaningField, value: String) {
+        if (field in automatic && value.isNotBlank()) {
+            retainedSource = combineSources(retainedSource, activeSource)
+        }
+        manualFields = ArrayList((manualFields + field.name).distinct())
+        automaticFields = ArrayList(automaticFields - field.name)
+        setValue(field, value)
+    }
+
     val currentQuery = english.trim()
     var suggestions by remember(currentQuery) { mutableStateOf(emptyList<Suggestion>()) }
     var queryState by remember(currentQuery) { mutableStateOf("") }
     var proposed by remember(currentQuery) { mutableStateOf<Suggestion?>(null) }
+    var selectedKey by rememberSaveable(currentQuery) { mutableStateOf<String?>(null) }
+    var more by rememberSaveable(currentQuery) { mutableStateOf(false) }
+    var showSources by remember { mutableStateOf(false) }
+    val selected = suggestions.firstOrNull { it.selectionKey() == selectedKey }
     LaunchedEffect(currentQuery) {
         if (currentQuery.length >= 2) {
             kotlinx.coroutines.delay(600)
             queryState = "Buscando significados…"
             try {
-                val result = lookup(currentQuery)
+                val result = distinctMeanings(lookup(currentQuery))
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 suggestions = result
                 queryState = if (result.isEmpty()) "Sin resultados. Podés completar la tarjeta a mano." else ""
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
-            } catch (failure: Exception) {
+            } catch (_: Exception) {
                 queryState = "No se pudo consultar. Podés completar la tarjeta a mano."
             }
         }
     }
-    fun applySuggestion(value: Suggestion) {
-        definition = value.definition
-        val replaced = mutableSetOf("definition")
-        if (value.category.isNotBlank()) {
-            senseCategories = value.category
-            replaced += "categories"
+    fun applySuggestion(value: Suggestion, replaceManual: Boolean = false) {
+        val incoming = fieldsFrom(value)
+        val merged = mergeMeaningFields(currentValues, incoming, automatic, manual, replaceManual)
+        val applied = merged.keys.filter { field ->
+            incoming.getValue(field).isNotBlank() &&
+                (field in automatic || currentValues.getValue(field) != merged.getValue(field))
         }
-        if (value.synonyms.isNotBlank()) {
-            synonyms = value.synonyms
-            replaced += "synonyms"
-        }
-        if (value.example.isNotBlank()) {
-            example = value.example
-            replaced += "example"
-        }
-        changedFields = ArrayList(changedFields - replaced)
-        source = value.source + "\nContenido seleccionado y editable por el usuario."
-        details = true
+        merged.forEach(::setValue)
+        automaticFields = ArrayList(applied.map { it.name })
+        manualFields = ArrayList(manualFields - automaticFields.toSet())
+        activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
+        selectedKey = value.selectionKey()
         proposed = null
+    }
+    fun addAlternative(field: MeaningField, value: String, separator: String) {
+        val existing = currentValues.getValue(field)
+        val parts = if (field == MeaningField.Example) existing.lines() else existing.split(',')
+        val values = parts.map { it.trim() }.filter { it.isNotEmpty() }
+        if (value in values) return
+        val updated = (values + value).joinToString(separator)
+        if (field in automatic || (existing.isBlank() && field !in manual)) {
+            setValue(field, updated)
+            automaticFields = ArrayList((automaticFields + field.name).distinct())
+            activeSource = selected?.source.orEmpty()
+        } else {
+            editValue(field, updated)
+            retainedSource = combineSources(retainedSource, selected?.source.orEmpty())
+        }
     }
     var tags by rememberSaveable { mutableStateOf(ArrayList(original?.tags ?: initialTags)) }
     var pending by rememberSaveable { mutableStateOf("") }
@@ -88,7 +155,7 @@ internal fun CardEditor(
     val valid = english.isNotBlank() && spanish.isNotBlank() && !busy
     val effectiveTags = (tags + pending.split(',').map { it.trim() }.filter { it.isNotEmpty() })
         .distinctBy { it.lowercase() }
-    val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition, synonyms, senseCategories, entryCategories, source)
+    val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition, synonyms, senseCategories, entryCategories, storedAttribution(combineSources(retainedSource, activeSource)))
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -98,18 +165,96 @@ internal fun CardEditor(
         model.save(draft, next, editedEntryCategories)
     }
 
-    OutlinedTextField(english, { english = it }, Modifier.fillMaxWidth(), enabled = !busy,
+    OutlinedTextField(english, { value ->
+        if (value.trim() != currentQuery) {
+            automatic.forEach { setValue(it, "") }
+            automaticFields = arrayListOf()
+            activeSource = ""
+        }
+        english = value
+    }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Palabra o expresión en inglés") }, singleLine = true)
-    OutlinedTextField(spanish, { spanish = it }, Modifier.fillMaxWidth(), enabled = !busy,
+    if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
+        Text("Significados", style = MaterialTheme.typography.titleMedium)
+        if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
+        fun choose(suggestion: Suggestion) {
+            more = false
+            val incoming = fieldsFrom(suggestion)
+            val preserving = mergeMeaningFields(currentValues, incoming, automatic, manual, false)
+            val replacing = mergeMeaningFields(currentValues, incoming, automatic, manual, true)
+            if (preserving != replacing) proposed = suggestion else {
+                applySuggestion(suggestion)
+                focus.clearFocus()
+            }
+        }
+        val top = suggestions.take(3)
+        val visible = if (selected != null && selected !in top) top.take(2) + selected else top
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            visible.forEach { suggestion ->
+                MeaningOption(suggestion, suggestion == selected, busy) { choose(suggestion) }
+            }
+        }
+        if (suggestions.size > 3) {
+            TextButton(onClick = { focus.clearFocus(); more = true }) { Text("Ver más significados") }
+        }
+        if (more) {
+            AlertDialog(onDismissRequest = { more = false },
+                title = { Text("Significados") },
+                text = {
+                    LazyColumn(Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(suggestions) { suggestion ->
+                            MeaningOption(suggestion, suggestion == selected, busy, expanded = true) { choose(suggestion) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { more = false }) { Text("Cerrar") } })
+        }
+    }
+    val sources = combineSources(retainedSource, activeSource, *suggestions.map { it.source }.toTypedArray())
+    if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text("Fuente y licencia") }
+    if (showSources && sources.isNotEmpty()) {
+        val uriHandler = LocalUriHandler.current
+        AlertDialog(onDismissRequest = { showSources = false }, title = { Text("Fuente y licencia") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    sources.lineSequence().filter { it.isNotBlank() }.distinct().forEach { line ->
+                        if (line.startsWith("https://")) {
+                            TextButton(onClick = { runCatching { uriHandler.openUri(line) } }) {
+                                Text(if ("creativecommons.org" in line) "Ver licencia" else "Ver entrada original")
+                            }
+                        } else Text(line)
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { showSources = false }) { Text("Cerrar") } })
+    }
+    OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Traducción al español") }, singleLine = true)
-    OutlinedTextField(example, { example = it; markChanged("example") }, Modifier.fillMaxWidth(), enabled = !busy,
+    OutlinedTextField(example, { editValue(MeaningField.Example, it) }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Ejemplo en inglés (opcional)") })
     TextButton(onClick = { details = !details }) { Text(if (details) "Ocultar detalles" else "Detalles opcionales") }
     if (details) {
-        OutlinedTextField(definition, { definition = it; markChanged("definition") }, Modifier.fillMaxWidth(), label = { Text("Definición en inglés") })
-        OutlinedTextField(synonyms, { synonyms = it; markChanged("synonyms") }, Modifier.fillMaxWidth(), label = { Text("Sinónimos (separados por comas)") })
-        OutlinedTextField(senseCategories, { senseCategories = it; markChanged("categories") }, Modifier.fillMaxWidth(), label = { Text("Categorías de esta acepción (separadas por comas)") })
-        OutlinedTextField(entryCategories, { editedEntryCategories = it }, Modifier.fillMaxWidth(), label = { Text("Categorías de la expresión (compartidas)") })
+        OutlinedTextField(definition, { editValue(MeaningField.Definition, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("Definición en inglés") })
+        OutlinedTextField(synonyms, { editValue(MeaningField.Synonyms, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("Sinónimos (separados por comas)") })
+        selected?.let { sense ->
+            val otherSynonyms = sense.synonymOptions.filter { it !in synonyms.split(',').map(String::trim) }
+            if (otherSynonyms.isNotEmpty()) {
+                TagMenu("Añadir sinónimo sugerido", otherSynonyms, enabled = !busy) {
+                    addAlternative(MeaningField.Synonyms, it, ", ")
+                }
+            }
+            val otherExamples = sense.examples.filter { it !in example.lines() }
+            if (otherExamples.isNotEmpty()) {
+                TagMenu("Añadir ejemplo sugerido", otherExamples, enabled = !busy) {
+                    addAlternative(MeaningField.Example, it, "\n")
+                }
+            }
+        }
+        OutlinedTextField(senseCategories, { editValue(MeaningField.Categories, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("Categorías de esta acepción (separadas por comas)") })
+        OutlinedTextField(entryCategories, { editedEntryCategories = it }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("Categorías de la expresión (compartidas)") })
         Text("Podés escribir varios ejemplos, uno por línea.")
     }
     Text("Etiquetas", style = MaterialTheme.typography.titleMedium)
@@ -147,30 +292,18 @@ internal fun CardEditor(
             if (draft == original) onAnotherSense(original) else confirm = true
         }, enabled = !busy) { Text("Añadir otra acepción") }
     }
-    if (source.isNotEmpty()) Text(source, style = MaterialTheme.typography.bodySmall)
-    if (queryState.isNotEmpty()) Text(queryState)
-    suggestions.forEach { suggestion ->
-        OutlinedCard(onClick = {
-            val conflict = wouldReplace("definition", definition, suggestion.definition) ||
-                wouldReplace("categories", senseCategories, suggestion.category) ||
-                wouldReplace("synonyms", synonyms, suggestion.synonyms) ||
-                wouldReplace("example", example, suggestion.example)
-            if (conflict) proposed = suggestion else applySuggestion(suggestion)
-        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp)) {
-                Text(suggestion.category)
-                Text(suggestion.definition)
-                if (suggestion.example.isNotEmpty()) Text(suggestion.example)
-                Text(suggestion.source, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
     proposed?.let { suggestion ->
         AlertDialog(onDismissRequest = { proposed = null },
-            title = { Text("Reemplazar campos con contenido") },
-            text = { Text("Esta acepción propone otra definición, categorías y, si existen, sinónimos o ejemplo. La traducción en español se conserva.") },
-            confirmButton = { TextButton(onClick = { applySuggestion(suggestion) }) { Text("Usar sugerencia") } },
-            dismissButton = { TextButton(onClick = { proposed = null }) { Text("Conservar mis campos") } })
+            title = { Text("Esta acepción cambia campos editados") },
+            text = { Text("Podés aplicar el nuevo significado conservando tus campos o reemplazarlos cuando hay un valor sugerido.") },
+            confirmButton = { TextButton(onClick = {
+                applySuggestion(suggestion, replaceManual = true)
+                focus.clearFocus()
+            }) { Text("Usar sugerencia") } },
+            dismissButton = { TextButton(onClick = {
+                applySuggestion(suggestion)
+                focus.clearFocus()
+            }) { Text("Conservar mis campos") } })
     }
     if (confirm) {
         AlertDialog(onDismissRequest = { confirm = false },
@@ -184,6 +317,45 @@ internal fun CardEditor(
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Volver a editar") } })
     }
 }
+
+@Composable
+private fun MeaningOption(
+    suggestion: Suggestion,
+    chosen: Boolean,
+    busy: Boolean,
+    expanded: Boolean = false,
+    onClick: () -> Unit
+) {
+    OutlinedCard(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = if (chosen)
+            MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(listOf(categoryLabel(suggestion.category), suggestion.usage)
+                .filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium)
+            if (suggestion.spanish.isNotEmpty()) {
+                Text(suggestion.spanish.joinToString(" · "), style = MaterialTheme.typography.titleSmall)
+            }
+            Text(suggestion.definition, maxLines = if (expanded || chosen) Int.MAX_VALUE else 2,
+                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+private const val EDIT_NOTICE = "Contenido seleccionado y editable por el usuario."
+
+private fun combineSources(vararg sources: String): String = sources.asSequence()
+    .flatMap { it.split("\n\n").asSequence() }
+    .map { it.removeSuffix(EDIT_NOTICE).trim() }
+    .filter { it.isNotBlank() }
+    .distinct()
+    .joinToString("\n\n")
+
+private fun storedAttribution(source: String): String =
+    if (source.isBlank()) "" else "$source\n$EDIT_NOTICE"
+
+private fun Suggestion.selectionKey(): String =
+    listOf(definition, category, usage, spanish.joinToString("|"), source).joinToString("\n")
 
 @Composable
 internal fun TagMenu(title: String, choices: List<String>, enabled: Boolean = true, onChoose: (String) -> Unit) {
