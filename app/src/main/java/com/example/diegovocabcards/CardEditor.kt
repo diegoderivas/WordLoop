@@ -65,15 +65,14 @@ internal fun CardEditor(
     var spanish by rememberSaveable { mutableStateOf(original?.spanish.orEmpty()) }
     var example by rememberSaveable { mutableStateOf(original?.example.orEmpty()) }
     var details by rememberSaveable { mutableStateOf(false) }
-    var advanced by rememberSaveable { mutableStateOf(false) }
     var editingCategory by rememberSaveable { mutableStateOf(false) }
     var definition by rememberSaveable { mutableStateOf(original?.definition.orEmpty()) }
     var synonyms by rememberSaveable { mutableStateOf(original?.synonyms.orEmpty()) }
     var senseCategories by rememberSaveable { mutableStateOf(original?.senseCategories.orEmpty()) }
     val localCards by model.cards.collectAsState(initial = emptyList())
-    var editedEntryCategories by rememberSaveable(english.trim()) { mutableStateOf<String?>(null) }
-    val entryCategories = editedEntryCategories ?: localCards.firstOrNull { it.english == english.trim() }?.entryCategories.orEmpty()
-    var manualFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var manualFields by rememberSaveable {
+        mutableStateOf(if (original == null) arrayListOf() else arrayListOf(MeaningField.Spanish.name))
+    }
     var automaticFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var retainedSource by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
     var activeSource by rememberSaveable { mutableStateOf("") }
@@ -184,7 +183,8 @@ internal fun CardEditor(
             field.name !in manualFields
     LaunchedEffect(selected) {
         if (selected != null) {
-            if (selected.spanish.isEmpty()) requestGoogle()
+            requestGoogle()
+            requestNano(SenseRequest.Translation)
             requestGuide()
             requestNano(SenseRequest.Synonyms)
         }
@@ -192,12 +192,12 @@ internal fun CardEditor(
     val googleResult = providers?.google?.result
     val geminiResult = providers?.translation?.result
     LaunchedEffect(selected, googleResult, geminiResult) {
-        if (selected != null && selected.spanish.isEmpty() && googleResult != null && canFill(MeaningField.Spanish)) {
-            val google = googleResult.firstOrNull()
-            val candidate = google ?: geminiResult?.firstOrNull()
-            if (candidate != null && spanish.isBlank()) {
-                applyTranslation(candidate, if (google != null) GOOGLE_TRANSLATION else GEMINI_TRANSLATION, explicitly = false)
-            } else if (google == null) requestNano(SenseRequest.Translation)
+        if (canFill(MeaningField.Spanish)) {
+            val gemini = geminiResult?.firstOrNull()
+            val candidate = gemini ?: googleResult?.firstOrNull()
+            if (candidate != null) {
+                applyTranslation(candidate, if (gemini != null) GEMINI_TRANSLATION else GOOGLE_TRANSLATION, explicitly = false)
+            }
         }
     }
     val suggestedGuide = (providers?.guide?.result as? UsageNoteResult.Ready)?.note
@@ -276,7 +276,7 @@ internal fun CardEditor(
     val effectiveTags = (tags + pending.split(',').map { it.trim() }.filter { it.isNotEmpty() })
         .distinctBy { it.lowercase() }
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
-        synonyms, senseCategories, entryCategories,
+        synonyms, senseCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource)),
         usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, ipa, ipaSource)
     fun addPending() {
@@ -286,7 +286,7 @@ internal fun CardEditor(
     fun save(next: AfterSave) {
         focus.clearFocus()
         val pending = providers?.guide?.pending.takeIf { selected != null && draft.usageNote.isBlank() }
-        model.save(draft, next, editedEntryCategories, requests.retainForSave(pending))
+        model.save(draft, next, requests.retainForSave(pending))
     }
 
     EnglishPronunciation(currentQuery, ipa) {
@@ -539,13 +539,6 @@ internal fun CardEditor(
         OutlinedTextField(synonyms, { editValue(MeaningField.Synonyms, it) }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("Sinónimos (separados por comas)") })
         Text("Podés escribir varios ejemplos, uno por línea.")
-        TextButton(onClick = { advanced = !advanced }) {
-            Text(if (advanced) "Ocultar detalles avanzados" else "Detalles avanzados")
-        }
-        if (advanced) {
-            OutlinedTextField(entryCategories, { editedEntryCategories = it }, Modifier.fillMaxWidth(), enabled = !busy,
-                label = { Text("Categorías de la expresión (compartidas)") })
-        }
     }
     Text("Etiquetas", style = MaterialTheme.typography.titleMedium)
     if (tags.isNotEmpty()) {

@@ -21,6 +21,57 @@ import org.junit.Test
 class SuggestionsTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun bothOrdersPreferGeminiAndRespectAnExplicitlyClearedTranslation() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val senses = listOf(
+            Suggestion("Flames and heat.", "noun", "Dictionary", listOf("fuego")),
+            Suggestion("End someone's employment.", "verb", "Dictionary", listOf("despedir")),
+            Suggestion("Discharge a weapon.", "verb", "Dictionary")
+        )
+        val google = senses.associateWith { CompletableDeferred<String>() }
+        val nano = senses.associateWith { CompletableDeferred<String>() }
+        val model = VocabularyModel(app, db)
+        try {
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(null, "fire", emptyList(), emptyList(), model, lookup = { senses },
+                        translate = { _, s -> google.getValue(s).await() },
+                        nanoOptions = { _, s, task ->
+                            if (task == SenseRequest.Translation) listOf(nano.getValue(s).await()) else emptyList()
+                        }, usageNotes = { _, _, _ -> UsageNoteResult.Unavailable }) {}
+                }
+            }
+            val spanish = compose.onNodeWithText("Traducción al español")
+            fun waitText(value: String) = compose.waitUntil(5000) {
+                compose.onAllNodes(hasSetTextAction() and hasText(value)).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.waitUntil(5000) { compose.onAllNodesWithText(senses.first().definition).fetchSemanticsNodes().isNotEmpty() }
+            fun choose(i: Int) = compose.onNodeWithText(senses[i].definition).performScrollTo().performClick()
+            choose(0)
+            google.getValue(senses[0]).complete("incendio")
+            waitText("incendio")
+            nano.getValue(senses[0]).complete("llamas")
+            waitText("llamas")
+            choose(1)
+            nano.getValue(senses[1]).complete("destituir")
+            waitText("destituir")
+            google.getValue(senses[1]).complete("echar")
+            compose.waitUntil { compose.onAllNodesWithText("Usar traducción de Google").fetchSemanticsNodes().isNotEmpty() }
+            spanish.assertTextContains("destituir")
+            choose(2)
+            google.getValue(senses[2]).complete("disparar")
+            waitText("disparar")
+            spanish.performScrollTo().performTextClearance()
+            nano.getValue(senses[2]).complete("hacer fuego")
+            compose.waitUntil { compose.onAllNodesWithText("Usar traducción de Gemini").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Guardar").assertIsNotEnabled()
+        } finally {
+            (google.values + nano.values).forEach { it.cancel() }
+            db.close()
+        }
+    }
+
     @Test fun switchingMeaningKeepsOnlyTheNewAutomaticFieldsAndSavesOffline() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
@@ -131,7 +182,7 @@ class SuggestionsTest {
             tap(flight.definition)
             tap(breakTime.definition)
             spanish.assertTextContains("mi corrección")
-            assertEquals(2, googleCalls)
+            assertEquals(3, googleCalls)
             tap("Usar traducción de Google")
             tap("Guardar")
             compose.waitUntil(5000) { model.saved != null }
@@ -183,7 +234,6 @@ class SuggestionsTest {
             waitFor(flame.definition)
             tap(flame.definition)
             compose.onNodeWithText("Sugerir sinónimos con Gemini").assertDoesNotExist()
-            tap("Traducir con Gemini")
             compose.waitUntil(5000) { started.isCompleted }
             tap(dismiss.definition)
             delayed.complete("llama")

@@ -8,8 +8,7 @@ import java.util.Locale
 @Entity(indices = [Index(value = ["english"], unique = true)])
 internal data class Entry(
     @PrimaryKey(autoGenerate = true) val entryId: Long = 0,
-    val english: String,
-    @ColumnInfo(defaultValue = "''") val entryCategories: String = ""
+    val english: String
 )
 
 @Entity(
@@ -49,7 +48,6 @@ internal data class Card(
     val definition: String = "",
     val synonyms: String = "",
     val senseCategories: String = "",
-    val entryCategories: String = "",
     val source: String = "",
     val usageNote: String = "",
     val generatedExamples: String = "",
@@ -60,7 +58,7 @@ internal data class Card(
 @Dao
 internal abstract class VocabularyDao {
     @Transaction
-    @Query("SELECT id, english, spanish, example, definition, synonyms, senseCategories, entryCategories, source, usageNote, generatedExamples, ipa, ipaSource FROM Sense JOIN Entry USING(entryId) ORDER BY Sense.rowid DESC")
+    @Query("SELECT id, english, spanish, example, definition, synonyms, senseCategories, source, usageNote, generatedExamples, ipa, ipaSource FROM Sense JOIN Entry USING(entryId) ORDER BY Sense.rowid DESC")
     abstract fun cards(): Flow<List<Card>>
 
     /** Compare the inputs used for generation in the same write that installs the guide. */
@@ -98,14 +96,11 @@ internal abstract class VocabularyDao {
         removeUnusedEntries()
     }
 
-    @Query("UPDATE Entry SET entryCategories = :categories WHERE entryId = :id")
-    protected abstract suspend fun categories(id: Long, categories: String)
-
     @Transaction
     open suspend fun save(
         id: String, english: String, spanish: String, example: String, tags: String,
         definition: String = "", synonyms: String = "", senseCategories: String = "",
-        entryCategories: String? = null, source: String = "", usageNote: String = "",
+        source: String = "", usageNote: String = "",
         generatedExamples: String = "", ipa: String = "", ipaSource: String = ""
     ) {
         val term = english.trim()
@@ -114,7 +109,6 @@ internal abstract class VocabularyDao {
         val entryId = if (inserted == -1L) findEntry(term) else inserted
         putSense(Sense(id, entryId, spanish.trim(), example.trim(), definition, synonyms, senseCategories,
             source, usageNote, generatedExamples, ipa, ipaSource))
-        entryCategories?.let { categories(entryId, it) }
         clearTags(id)
         val labels = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
             .distinctBy { it.lowercase(Locale.ROOT) }
@@ -123,9 +117,13 @@ internal abstract class VocabularyDao {
     }
 }
 
+@DeleteColumn(tableName = "Entry", columnName = "entryCategories")
+internal class RemoveEntryCategories : androidx.room.migration.AutoMigrationSpec
+
 @Database(entities = [Entry::class, Sense::class, CardTag::class, ReviewEvent::class, LibrarySettings::class],
-    version = 6, autoMigrations = [AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
-        AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)])
+    version = 7, autoMigrations = [AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7, spec = RemoveEntryCategories::class)])
 internal abstract class VocabularyDatabase : RoomDatabase() {
     abstract fun vocabulary(): VocabularyDao
     abstract fun backup(): BackupDao

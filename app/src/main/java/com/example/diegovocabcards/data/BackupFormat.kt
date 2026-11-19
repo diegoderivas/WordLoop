@@ -7,10 +7,10 @@ import java.io.*
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-/** Fixed field order in version 1. Integers and IEEE doubles use DataOutput's big-endian encoding. */
+/** Version 2 omits shared categories. Version 1 remains readable. Integers and IEEE doubles use DataOutput's big-endian encoding. */
 internal object BackupFormat {
     private const val MAGIC = "DiegoVocabCards"
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val MAX_BYTES = 64 * 1024 * 1024
 
     private fun DataOutputStream.string(value: String) {
@@ -51,7 +51,6 @@ internal object BackupFormat {
             for (entry in backup.entries) {
                 writeLong(entry.entryId)
                 string(entry.english)
-                string(entry.entryCategories)
             }
             writeInt(backup.senses.size)
             for (sense in backup.senses) with(sense) {
@@ -94,7 +93,8 @@ internal object BackupFormat {
     fun read(source: InputStream): LibraryBackup {
         val input = DataInputStream(source.buffered())
         require(input.readUTF() == MAGIC) { "El archivo no es una copia de DiegoVocabCards." }
-        require(input.readInt() == VERSION) { "La versión de esta copia es incompatible." }
+        val version = input.readInt()
+        require(version in 1..VERSION) { "La versión de esta copia es incompatible." }
         val size = input.readInt()
         require(size in 1..MAX_BYTES)
         val checksum = ByteArray(32).also(input::readFully)
@@ -103,7 +103,11 @@ internal object BackupFormat {
         return DataInputStream(ByteArrayInputStream(payload)).run {
             val settings = LibrarySettings(theme = string(), automaticSpeech = readBoolean(), voice = string(),
                 review = ReviewSettings(readInt(), readInt(), readInt(), readInt()))
-            val entries = rows { Entry(readLong(), string(), string()) }
+            val entries = rows {
+                val entry = Entry(readLong(), string())
+                if (version == 1) string() // Consume and discard the retired category.
+                entry
+            }
             val senses = rows {
                 Sense(id = string(), entryId = readLong(), spanish = string(), example = string(),
                     definition = string(), synonyms = string(), senseCategories = string(), source = string(),

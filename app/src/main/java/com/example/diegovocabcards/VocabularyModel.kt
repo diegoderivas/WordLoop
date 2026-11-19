@@ -47,14 +47,14 @@ internal class VocabularyModel(app: Application, private val database: Vocabular
 
     fun acknowledgeSave() { saved = null }
 
-    fun save(card: Card, next: AfterSave, editedEntryCategories: String?, pendingGuide: kotlinx.coroutines.Deferred<UsageNoteResult>? = null) {
+    fun save(card: Card, next: AfterSave, pendingGuide: kotlinx.coroutines.Deferred<UsageNoteResult>? = null) {
         if (saving || saved != null) return
         saving = true
         failedId = null
         viewModelScope.launch {
             try {
                 dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
-                    editedEntryCategories, card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource)
+                    card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource)
                 if (card.usageNote.isEmpty() && pendingGuide != null) {
                     viewModelScope.launch {
                         val ready = pendingGuide.await() as? UsageNoteResult.Ready ?: return@launch

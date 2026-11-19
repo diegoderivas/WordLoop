@@ -14,6 +14,68 @@ import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 class LibraryBackupTest {
+    @Test fun restoresVersionOneAndDiscardsOnlyTheSharedCategory() = runBlocking {
+        // Frozen v1 record layout, independent of the current exporter.
+        val payload = ByteArrayOutputStream().also { bytes ->
+            java.io.DataOutputStream(bytes).use { out ->
+                fun field(value: String) {
+                    val encoded = value.toByteArray(Charsets.UTF_8)
+                    out.writeInt(encoded.size)
+                    out.write(encoded)
+                }
+                field("dark")
+                out.writeBoolean(false)
+                field("uk")
+                listOf(92, 2, 9, 8, 1).forEach(out::writeInt)
+                out.writeLong(42)
+                field("fire")
+                field("obsolete-shared")
+                out.writeInt(1)
+                field("flame")
+                out.writeLong(42)
+                listOf("fuego", "A fire is burning.", "Flames.", "flame", "noun", "Dictionary",
+                    "A guide", "Second example", "/faɪə/", "IPA source").forEach(::field)
+                out.writeInt(1)
+                field("flame")
+                field("diario")
+                out.writeInt(1)
+                field("flame")
+                field("EN_ES")
+                out.writeInt(1)
+                field("GOOD")
+                field("LEARNING")
+                out.writeInt(1)
+                out.writeDouble(3.0)
+                out.writeDouble(6.0)
+                out.writeLong(1_800_000_600_000)
+                out.writeLong(1_800_000_000_000)
+            }
+        }.toByteArray()
+        val file = ByteArrayOutputStream().also { bytes ->
+            java.io.DataOutputStream(bytes).use { out ->
+                out.writeUTF("DiegoVocabCards")
+                out.writeInt(1)
+                out.writeInt(payload.size)
+                out.write(java.security.MessageDigest.getInstance("SHA-256").digest(payload))
+                out.write(payload)
+            }
+        }.toByteArray()
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,
+            VocabularyDatabase::class.java).build()
+        try {
+            val decoded = BackupFormat.read(file.inputStream())
+            db.backup().restore(decoded)
+            assertEquals(decoded, db.backup().snapshot(LibrarySettings()))
+            val card = db.vocabulary().cards().first().single()
+            assertEquals("noun", card.senseCategories)
+            assertEquals(listOf("diario"), card.tags)
+            assertEquals(1_800_000_600_000, db.reviews().latest("flame", Direction.EN_ES)!!.memory.dueAt)
+            db.openHelper.readableDatabase.query("PRAGMA table_info(Entry)").use { columns ->
+                while (columns.moveToNext()) assertNotEquals("entryCategories", columns.getString(1))
+            }
+        } finally { db.close() }
+    }
+
     @Test fun roundTripIntoFreshDatabasePreservesBothSchedulesAndRejectsDamage() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val source = Room.inMemoryDatabaseBuilder(context, VocabularyDatabase::class.java).build()
@@ -25,7 +87,7 @@ class LibraryBackupTest {
                 review = ReviewSettings(92, 2, 9, 8))
             val dao = source.vocabulary()
             dao.save("a", "fire", "fuego", "There was a fire.", "daily,heat", "Flames.", "flame", "noun",
-                "noun,verb", "dictionary", "Meaning: heat and light.", "The fire spread.", "/faɪə/", "dictionary IPA")
+                "dictionary", "Meaning: heat and light.", "The fire spread.", "/faɪə/", "dictionary IPA")
             dao.save("b", "fire", "despedir", "", "daily", senseCategories = "verb")
             for (direction in Direction.entries) {
                 val now = 1_800_000_000_000L + direction.ordinal * 12345L
