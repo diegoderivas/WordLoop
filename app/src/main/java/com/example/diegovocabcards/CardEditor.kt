@@ -74,13 +74,8 @@ internal fun CardEditor(
     var retainedSource by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
     var activeSource by rememberSaveable { mutableStateOf("") }
     var translationSource by rememberSaveable { mutableStateOf("") }
-    var savedUsageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
-    var savedGeneratedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
-    var newUsageNote by rememberSaveable { mutableStateOf<String?>(null) }
-    var newGeneratedExamples by rememberSaveable { mutableStateOf("") }
-    val usageNote = newUsageNote ?: savedUsageNote
-    val generatedExamples = (savedGeneratedExamples.lines() + newGeneratedExamples.lines())
-        .filter(String::isNotBlank).distinct().joinToString("\n")
+    var usageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
+    var generatedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
     val currentValues = mapOf(
         MeaningField.Spanish to spanish, MeaningField.Definition to definition,
         MeaningField.Categories to senseCategories, MeaningField.Example to example,
@@ -148,10 +143,6 @@ internal fun CardEditor(
         manualFields = ArrayList(manualFields - automaticFields.toSet())
         activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
         translationSource = ""
-        if (selectedKey != value.selectionKey()) {
-            newUsageNote = null
-            newGeneratedExamples = ""
-        }
         selectedKey = value.selectionKey()
         choosingExample = value.examples.distinct().size > 1 &&
             (MeaningField.Example in automatic || MeaningField.Example in applied)
@@ -205,8 +196,6 @@ internal fun CardEditor(
             automaticFields = arrayListOf()
             activeSource = ""
             translationSource = ""
-            newUsageNote = null
-            newGeneratedExamples = ""
         }
         english = value
     }, Modifier.fillMaxWidth(), enabled = !busy,
@@ -351,26 +340,20 @@ internal fun CardEditor(
     if (selected != null) {
         key(currentQuery, selectedKey) {
             UsageNoteOffer(currentQuery, selected, usageNotes, enabled = !busy, hasNote = usageNote.isNotBlank(),
-                onSaveNote = { newUsageNote = it.forStorage() },
+                onSaveNote = { usageNote = it.forStorage() },
                 onAddExample = { generated ->
                     if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
-                        newGeneratedExamples = (newGeneratedExamples.lines().filter(String::isNotBlank) + generated)
+                        generatedExamples = (generatedExamples.lines().filter(String::isNotBlank) + generated)
                             .joinToString("\n")
                     }
                 })
         }
     }
     SavedUsageContent(usageNote, generatedExamples,
-        onRemoveNote = if (busy) null else {
-            {
-                savedUsageNote = ""
-                newUsageNote = null
-            }
-        },
+        onRemoveNote = if (busy) null else ({ usageNote = "" }),
         onRemoveExample = if (busy) null else {
             { generated ->
-                savedGeneratedExamples = savedGeneratedExamples.lines().filterNot { it == generated }.joinToString("\n").trim()
-                newGeneratedExamples = newGeneratedExamples.lines().filterNot { it == generated }.joinToString("\n").trim()
+                generatedExamples = generatedExamples.lines().filterNot { it == generated }.joinToString("\n").trim()
             }
         })
 

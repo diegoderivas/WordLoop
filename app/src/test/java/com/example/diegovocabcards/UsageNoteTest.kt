@@ -4,25 +4,43 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UsageNoteTest {
-    @Test fun requestContainsFullExpressionAndOnlyContextForThisSense() {
-        val sense = Suggestion("To begin a flight.", "verb", "SOURCE_ONLY",
-            examples = listOf("The plane took off.", "We took off at dawn."))
-        val prompt = usageNotePrompt("take off", sense)
-        assertTrue("Expression: take off" in prompt)
-        assertTrue("Category: Verbo" in prompt)
-        assertTrue(sense.definition in prompt)
-        assertTrue(sense.examples.all { it in prompt })
-        assertFalse(sense.source in prompt)
+    @Test fun requestUsesOnlyTheSelectedSenseAndExplicitlyRequiresEnglish() {
+        val flight = Suggestion("To begin a flight.", "verb", "SOURCE_ONLY",
+            examples = listOf("The plane took off."), spanish = listOf("despegar"))
+        val removing = Suggestion("To remove clothing.", "verb", "SOURCE_ONLY",
+            examples = listOf("Take off your coat."))
+        val work = Suggestion("To lose your job.", "phrase", "SOURCE_ONLY")
+        val cases = listOf("take off" to flight, "take off" to removing, "get fired" to work)
+        for ((expression, sense) in cases) {
+            val prompt = usageNotePrompt(expression, sense)
+            assertTrue("Expression: $expression" in prompt)
+            assertTrue("EVERY field in clear English" in prompt)
+            assertTrue("Category: ${sense.category}" in prompt)
+            assertTrue(sense.definition in prompt)
+            assertTrue(sense.examples.all { it in prompt })
+            assertTrue(cases.filter { it.second != sense }.none { it.second.definition in prompt })
+            assertFalse(sense.source in prompt)
+        }
     }
 
-    @Test fun validatesTwoDistinctExamplesAndOptionalNuance() {
-        val short = "USO: Sirve para hablar del comienzo del vuelo.\nEJEMPLO 1: We took off early.\nEJEMPLO 2: The plane took off late."
-        val result = parseUsageNote("$short\nMATIZ: Land indica el final del vuelo.")!!
-        assertEquals("Sirve para hablar del comienzo del vuelo.", result.explanation)
-        assertEquals(listOf("We took off early.", "The plane took off late."), result.examples)
-        assertEquals("Land indica el final del vuelo.", result.nuance)
-        assertNull(parseUsageNote(short)?.nuance)
-        assertNull(parseUsageNote(short.substringBefore("\nEJEMPLO 2:")))
-        assertNull(parseUsageNote(short.replace("The plane took off late.", "We took off early.")))
+    @Test fun parsesEnglishSectionsAndOmitsEmptyOrPlaceholderFields() {
+        val output = """
+            MEANING: A plane takes off when it leaves the ground. The phrase marks the start of a flight.
+            HOW TO USE IT: Say take off from a runway or take off for a destination.
+            NUANCE: (omit)
+            SIMILAR WORDS: Land marks the end of the flight.
+            EXAMPLE 1: We took off before dawn.
+            EXAMPLE 2: The rescue pilot took off during a storm.
+            EXAMPLE 3: The spacecraft took off as the crowd cheered.
+        """.trimIndent()
+        val result = parseUsageNote(output)!!
+        assertEquals(listOf("Meaning", "How to use it", "Similar words"), result.sections().map { it.first })
+        assertEquals(3, result.examples.size)
+        assertNull(result.nuance)
+        assertFalse("(omit)" in result.forStorage())
+        assertEquals(2, parseUsageNote(output.replace("The spacecraft took off as the crowd cheered.", "We took off before dawn."))!!.examples.size)
+        assertNull(parseUsageNote(output.replace(" The phrase marks the start of a flight.", "")))
+        assertNull(parseUsageNote(output.lineSequence().filterNot { it.startsWith("HOW TO USE IT:") }.joinToString("\n")))
+        assertNull(parseUsageNote("I cannot help with this."))
     }
 }

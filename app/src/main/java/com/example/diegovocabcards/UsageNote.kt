@@ -5,16 +5,30 @@ import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.TextPart
 import com.google.mlkit.genai.prompt.generateContentRequest
+import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.languageid.LanguageIdentificationOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val GENERATED_WITH_NANO = "Generado con Gemini Nano"
 
-internal data class UsageNote(val explanation: String, val examples: List<String>, val nuance: String?) {
+internal data class UsageNote(
+    val meaning: String,
+    val usage: String,
+    val examples: List<String>,
+    val nuance: String? = null,
+    val similar: String? = null
+) {
+    fun sections(): List<Pair<String, String>> = buildList {
+        add("Meaning" to meaning)
+        add("How to use it" to usage)
+        nuance?.let { add("Nuance" to it) }
+        similar?.let { add("Similar words" to it) }
+    }
+
     fun forStorage(): String = buildList {
-        add(explanation)
-        add(examples.joinToString("\n"))
-        nuance?.let { add("Matiz · $it") }
+        addAll(sections().map { (title, content) -> "$title\n$content" })
+        if (examples.isNotEmpty()) add("Examples\n${examples.joinToString("\n")}")
     }.joinToString("\n\n")
 }
 
@@ -35,35 +49,72 @@ internal fun interface UsageNoteGenerator {
 }
 
 internal fun usageNotePrompt(term: String, sense: Suggestion): String = buildString {
-    appendLine("Help a Spanish speaker learn this English expression for the specified sense only.")
-    appendLine("Write one brief explanation in Spanish and two distinct, natural English sentences.")
-    appendLine("If useful, add one short contrast in Spanish with a related English word.")
-    appendLine("Use one line per label, in this order: USO:, EJEMPLO 1:, EJEMPLO 2:, MATIZ: (omit if unnecessary).")
+    appendLine("Write a short learner's guide for the single English sense below. Write EVERY field in clear English, even if the input contains Spanish.")
+    appendLine("Use these labels, one field per line. No introduction or placeholders.")
+    appendLine("MEANING: 2–3 complete sentences. Explain what the expression communicates here. Where relevant, explain the feeling, implication, or tone.")
+    appendLine("HOW TO USE IT: Give natural collocations or phrases and explain when they fit. Avoid generic grammar rules.")
+    appendLine("NUANCE: Optional. Describe a specific tone, implication, or register.")
+    appendLine("SIMILAR WORDS: Optional. Contrast one close word only if it helps.")
+    appendLine("EXAMPLE 1:, EXAMPLE 2:, EXAMPLE 3: One complete natural English sentence per line using the expression or an inflected form in this sense. Use different situations.")
+    appendLine("Skip any optional label or example you cannot support.")
     appendLine()
-    appendLine("## Dictionary data")
+    appendLine("## Selected dictionary sense")
     appendLine("Expression: ${term.oneLine().take(240)}")
-    appendLine("Category: ${categoryLabel(sense.category).oneLine().take(80)}")
+    appendLine("Category: ${sense.category.oneLine().take(80)}")
     appendLine("Definition: ${sense.definition.oneLine().take(400)}")
+    sense.usage.takeIf(String::isNotBlank)?.let { appendLine("Usage label: ${it.oneLine().take(120)}") }
+    sense.spanish.firstOrNull()?.let { appendLine("Spanish gloss (context): ${it.oneLine().take(120)}") }
     sense.examples.take(2).forEach { appendLine("Dictionary example: ${it.oneLine().take(220)}") }
 }
 
 private fun String.oneLine(): String = replace(Regex("\\s+"), " ").trim()
 
+private val noteFields = listOf("meaning", "how to use it", "nuance", "similar words", "example 1", "example 2", "example 3")
+private val placeholder = Regex("""(?i)^(?:omit(?:ted| if.*)?|optional|skip|none|n/?a|not applicable|null)[.!]?$""")
+private val sentenceEnd = Regex("""[.!?]+["'”’)]*(?=\s|$)""")
+private val word = Regex("""\p{L}+""")
+
 internal fun parseUsageNote(response: String): UsageNote? {
-    val labels = listOf("USO", "EJEMPLO 1", "EJEMPLO 2", "MATIZ")
-    val lines = response.lineSequence().map { it.trim().replace("**", "") }
-        .filter { it.isNotBlank() && !it.startsWith("```") }.toList()
-    if (lines.size !in 3..4) return null
-    val fields = lines.mapIndexed { index, line ->
-        val label = labels[index] + ":"
-        if (!line.startsWith(label, ignoreCase = true)) return null
-        line.substring(label.length).trim()
+    val values = mutableMapOf<String, String>()
+    for (raw in response.lineSequence()) {
+        val line = raw.trim().replace("**", "").removePrefix("- ").trim()
+        if (line.isEmpty() || line.startsWith("```")) continue
+        val label = line.substringBefore(':').trim().lowercase()
+        if (label !in noteFields || ':' !in line || label in values) return null
+        values[label] = line.substringAfter(':').trim()
     }
-    val (explanation, first, second) = fields
-    if (explanation.isBlank() || explanation.length > 320) return null
-    if (first.length !in 5..240 || second.length !in 5..240 || first.equals(second, true)) return null
-    val nuance = fields.getOrNull(3)?.takeIf { it.isNotBlank() && it.length <= 240 }
-    return UsageNote(explanation, listOf(first, second), nuance)
+    fun field(label: String, limit: Int): String? = values[label]?.takeIf {
+        val marker = it.trim(' ', '(', ')', '[', ']', '<', '>', '"')
+        it.length <= limit && word.containsMatchIn(marker) && !placeholder.matches(marker)
+    }
+
+    val meaning = field("meaning", 650) ?: return null
+    val usage = field("how to use it", 500) ?: return null
+    val endings = sentenceEnd.findAll(meaning).toList()
+    if (endings.size < 2 || endings.last().range.last != meaning.lastIndex || word.findAll(meaning).count() < 8) return null
+
+    val examples = (1..3).mapNotNull { field("example $it", 240) }
+        .filter { sentenceEnd.findAll(it).lastOrNull()?.range?.last == it.lastIndex }
+        .distinctBy(::senseText)
+    return UsageNote(meaning, usage, examples, field("nuance", 320), field("similar words", 320))
+}
+
+internal suspend fun validateUsageNote(response: String): UsageNote? {
+    val note = parseUsageNote(response) ?: return null
+    val identifier = LanguageIdentification.getClient(
+        LanguageIdentificationOptions.Builder().setConfidenceThreshold(0.5f).build()
+    )
+    try {
+        suspend fun english(text: String) = identifier.identifyLanguage(text).awaitResult() == "en"
+        if (!english(note.meaning) || !english(note.usage)) return null
+        return note.copy(
+            examples = note.examples.filter { english(it) },
+            nuance = note.nuance?.takeIf { english(it) },
+            similar = note.similar?.takeIf { english(it) }
+        )
+    } finally {
+        identifier.close()
+    }
 }
 
 internal object NanoUsageNotes : UsageNoteGenerator {
@@ -107,12 +158,12 @@ internal object NanoUsageNotes : UsageNoteGenerator {
             onProgress(UsageNoteProgress.Generating)
             val request = generateContentRequest(TextPart(prompt)) {
                 temperature = 0.2f
-                maxOutputTokens = 280
+                maxOutputTokens = 560
             }
             val candidate = withTimeoutOrNull(60_000) {
-                model.generateContent(request).candidates.firstOrNull()?.text
+                model.generateContent(request).candidates.firstOrNull()?.text?.let { validateUsageNote(it) }
             }
-            return candidate?.let(::parseUsageNote)?.let(UsageNoteResult::Ready) ?: UsageNoteResult.Error
+            return candidate?.let(UsageNoteResult::Ready) ?: UsageNoteResult.Error
         } finally {
             model.close()
         }

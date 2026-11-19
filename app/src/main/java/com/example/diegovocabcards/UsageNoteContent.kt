@@ -80,17 +80,21 @@ internal fun UsageNoteOffer(
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Nota de uso", style = MaterialTheme.typography.titleMedium)
                     Text(GENERATED_WITH_NANO, style = MaterialTheme.typography.labelMedium)
-                    Text(note.explanation)
+                    note.sections().forEach { (title, content) ->
+                        Text(title, style = MaterialTheme.typography.titleSmall)
+                        Text(content)
+                    }
+                    if (note.examples.isNotEmpty()) Text("Examples", style = MaterialTheme.typography.titleSmall)
                     note.examples.forEachIndexed { index, example ->
                         Text(example)
                         TextButton(onClick = { onAddExample(example); result = null }, enabled = enabled) {
                             Text("Añadir solo el ejemplo ${index + 1}")
                         }
                     }
-                    note.nuance?.let { Text("Matiz · $it") }
                     TextButton(onClick = { onSaveNote(note); result = null }, enabled = enabled) {
                         Text(if (hasNote) "Reemplazar nota" else "Guardar nota")
                     }
+                    TextButton(onClick = { start() }, enabled = enabled) { Text("Regenerar nota") }
                     TextButton(onClick = { result = null }) { Text("Seguir sin usarla") }
                 }
             }

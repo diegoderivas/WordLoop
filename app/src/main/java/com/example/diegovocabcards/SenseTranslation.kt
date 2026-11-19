@@ -52,11 +52,12 @@ internal object LocalSenseTranslation {
         }
     }
 
-    private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
-        addOnCompleteListener { task ->
-            if (task.isSuccessful) continuation.resume(task.result)
-            else continuation.resumeWithException(task.exception ?: IllegalStateException("Traducción interrumpida"))
-        }
+}
+
+internal suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
+    addOnCompleteListener { task ->
+        if (task.isSuccessful) continuation.resume(task.result)
+        else continuation.resumeWithException(task.exception ?: IllegalStateException("La operación se interrumpió"))
     }
 }
 
