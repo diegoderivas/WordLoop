@@ -1,5 +1,6 @@
 [versions]
 mlkitTranslate = "17.0.3"
+mlkitGenaiPrompt = "1.0.0-beta5"
 jsoup = "1.24.1"
 desugar = "2.1.5"
 fsrs = "1.0.0"
@@ -12,11 +13,12 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
-kotlin = "2.2.10"
+kotlin = "2.4.21"
 composeBom = "2026.02.01"
 
 [libraries]
 mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkitTranslate" }
+mlkit-genai-prompt = { module = "com.google.mlkit:genai-prompt", version.ref = "mlkitGenaiPrompt" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 desugar-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
 fsrs = { module = "io.github.open-spaced-repetition:fsrs", version.ref = "fsrs" }

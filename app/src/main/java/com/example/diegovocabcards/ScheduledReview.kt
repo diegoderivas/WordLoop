@@ -2,6 +2,8 @@ package com.example.diegovocabcards
 
 import android.database.sqlite.SQLiteException
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -107,23 +109,23 @@ internal fun ScheduledReview(
     dao: ReviewDao,
     clock: Clock,
     settings: ReviewSettings,
-    onQuestionChanged: suspend () -> Unit,
     onHome: () -> Unit
 ) {
     var currentId by rememberSaveable { mutableStateOf<String?>(null) }
     var turn by rememberSaveable { mutableIntStateOf(0) }
     var completed by rememberSaveable { mutableIntStateOf(0) }
     var finished by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(currentId, turn, finished) { onQuestionChanged() }
     val question = queue.ready.find { it.card.id == currentId && it.turn == turn }
     if (finished) {
-        Text("Repaso terminado", style = MaterialTheme.typography.headlineSmall)
-        Text("Calificaciones guardadas: $completed")
-        if (queue.ready.isEmpty()) {
-            Text("No hay tarjetas pendientes en este sentido.")
-            queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
-        } else Text("Ya hay tarjetas disponibles en este sentido.")
-        Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Volver a Inicio") }
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Repaso terminado", style = MaterialTheme.typography.headlineSmall)
+            Text("Calificaciones guardadas: $completed")
+            if (queue.ready.isEmpty()) {
+                Text("No hay tarjetas pendientes en este sentido.")
+                queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+            } else Text("Ya hay tarjetas disponibles en este sentido.")
+            Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Volver a Inicio") }
+        }
     } else if (question == null) {
         // Advance only once Room has published the committed turn.
         LaunchedEffect(currentId, turn, queue, schedules) {
@@ -160,75 +162,60 @@ private fun StudyQuestion(
     val scope = rememberCoroutineScope()
     val spanishFirst = direction == Direction.ES_EN
     val at = revealedAt
-    Text(
-        "${direction.label} · ${if (turn == 0) "Nueva" else "Pendiente"}",
-        style = MaterialTheme.typography.labelLarge
-    )
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    StudyPresentation(
+        card, spanishFirst, revealed = at != null,
+        caption = "${direction.label} · ${if (turn == 0) "Nueva" else "Pendiente"}",
+        onReveal = { revealedAt = clock.millis() }
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineMedium)
-            if (spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
-            if (at != null) {
-                HorizontalDivider()
-                Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
-                if (!spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
-                if (card.example.isNotBlank()) Text(card.example)
+        if (at != null) {
+            if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
+            val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
+                if (turn > 0) value = dao.latest(card.id, direction)
             }
-        }
-    }
-    if (at == null) {
-        Button(onClick = { revealedAt = clock.millis() }, modifier = Modifier.fillMaxWidth()) { Text("Mostrar respuesta") }
-        return
-    }
-    if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
-    val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
-        if (turn > 0) value = dao.latest(card.id, direction)
-    }
-    if (turn > 0 && previous?.turn != turn) {
-        Text("Cargando intervalos…")
-        return
-    }
-    val intervals = remember(previous, settings, at) {
-        reviewChoices.associate { (rating, _) ->
-            rating to formatReviewInterval(Fsrs.rate(previous?.memory, rating, at, settings).dueAt - at)
-        }
-    }
-    for (pair in reviewChoices.chunked(2)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((rating, label) in pair) {
-                val submit = {
-                    if (!saving) {
-                        saving = true
-                        failed = false
-                        scope.launch {
-                            try {
-                                onRate(rating, at)
-                            } catch (_: SQLiteException) {
-                                failed = true
-                            } finally {
-                                saving = false
+            if (turn > 0 && previous?.turn != turn) {
+                Text("Cargando intervalos…")
+                return@StudyPresentation
+            }
+            val intervals = remember(previous, settings, at) {
+                reviewChoices.associate { (rating, _) ->
+                    rating to formatReviewInterval(Fsrs.rate(previous?.memory, rating, at, settings).dueAt - at)
+                }
+            }
+            for (pair in reviewChoices.chunked(2)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((rating, label) in pair) {
+                        val submit = {
+                            if (!saving) {
+                                saving = true
+                                failed = false
+                                scope.launch {
+                                    try {
+                                        onRate(rating, at)
+                                    } catch (_: SQLiteException) {
+                                        failed = true
+                                    } finally {
+                                        saving = false
+                                    }
+                                }
                             }
                         }
+                        val modifier = Modifier.weight(1f).heightIn(min = 64.dp)
+                        val caption: @Composable RowScope.() -> Unit = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(label, textAlign = TextAlign.Center)
+                                Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall,
+                                    textAlign = TextAlign.Center)
+                            }
+                        }
+                        val padding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                        if (rating == Rating.GOOD) {
+                            Button(onClick = submit, modifier = modifier, enabled = !saving,
+                                contentPadding = padding, content = caption)
+                        } else {
+                            OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
+                                contentPadding = padding, content = caption)
+                        }
                     }
-                }
-                val modifier = Modifier.weight(1f).heightIn(min = 64.dp)
-                val caption: @Composable RowScope.() -> Unit = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(label, textAlign = TextAlign.Center)
-                        Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall,
-                            textAlign = TextAlign.Center)
-                    }
-                }
-                val padding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-                if (rating == Rating.GOOD) {
-                    Button(onClick = submit, modifier = modifier, enabled = !saving,
-                        contentPadding = padding, content = caption)
-                } else {
-                    OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
-                        contentPadding = padding, content = caption)
                 }
             }
         }

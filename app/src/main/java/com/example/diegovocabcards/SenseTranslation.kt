@@ -3,16 +3,18 @@ package com.example.diegovocabcards
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.tasks.Task
@@ -121,8 +123,7 @@ internal fun SenseTranslationOffer(
                 style = MaterialTheme.typography.bodySmall)
             result != null -> {
                 Text("Sugerencia automática", style = MaterialTheme.typography.labelMedium)
-                Text(result)
-                TranslationAttribution()
+                TranslatedText(result, attributed = true)
                 TextButton(onClick = { onUse(result); proposal = null; attempted = false },
                     enabled = enabled) { Text("Usar traducción") }
             }
@@ -138,15 +139,26 @@ internal fun SenseTranslationOffer(
 }
 
 @Composable
-internal fun TranslationAttribution() {
+internal fun TranslatedText(value: String, attributed: Boolean) {
+    if (attributed) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, Modifier.align(Alignment.CenterVertically))
+            TranslationAttribution(Modifier.align(Alignment.CenterVertically))
+        }
+    } else Text(value)
+}
+
+@Composable
+internal fun TranslationAttribution(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val badge = remember(context.assets) {
-        val encoded = context.assets.open("translation/google-attribution.png.b64")
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val asset = if (dark) "google-attribution-dark" else "google-attribution"
+    val badge = remember(context.assets, asset) {
+        val encoded = context.assets.open("translation/$asset.png.b64")
             .bufferedReader().use { it.readText() }
         val bytes = Base64.decode(encoded, Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
     }
-    Surface(color = Color.White) {
-        Image(badge, contentDescription = "Powered by Google Translate", modifier = Modifier.size(176.dp, 16.dp))
-    }
+    Image(badge, contentDescription = "Traducción automática de Google Translate",
+        modifier = modifier.size(120.dp, 16.dp))
 }

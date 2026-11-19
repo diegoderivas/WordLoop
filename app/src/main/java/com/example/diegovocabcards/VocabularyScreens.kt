@@ -3,6 +3,8 @@ package com.example.diegovocabcards
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
@@ -46,8 +48,7 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
             OutlinedCard(onClick = { onEdit(card.id) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
-                    Text(card.spanish)
-                    if (GOOGLE_TRANSLATION in card.source) TranslationAttribution()
+                    TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
                     if (card.example.isNotEmpty()) Text(card.example, style = MaterialTheme.typography.bodyMedium)
                     if (card.tags.isNotEmpty()) Text(card.tags.joinToString(" · "),
                         style = MaterialTheme.typography.labelLarge)
@@ -64,47 +65,47 @@ internal fun Practice(cards: List<Card>, onAdd: () -> Unit) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     var revealed by rememberSaveable { mutableStateOf(false) }
     val ids = session
-    Text("Práctica manual", style = MaterialTheme.typography.titleMedium)
-    when {
-        cards.isEmpty() -> {
-            Text("Agregá una tarjeta para empezar a practicar.")
-            Button(onClick = onAdd) { Text("Añadir tarjeta") }
-        }
-        ids == null -> {
-            Column(Modifier.selectableGroup()) {
-                for (direction in listOf(true, false)) {
-                    val selected = spanishFirst == direction
-                    Row(Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton,
-                        onClick = { spanishFirst = direction }).heightIn(min = 48.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = selected, onClick = null)
-                        Spacer(Modifier.width(12.dp))
-                        Text(if (direction) "Español → Inglés" else "Inglés → Español")
-                    }
+    val card = cards.find { it.id == ids?.getOrNull(index) }
+    if (ids != null && card != null) {
+        key(card.id, index) {
+            StudyPresentation(card, spanishFirst, revealed, "Tarjeta ${index + 1} de ${ids.size}",
+                onReveal = { revealed = true }) {
+                Button(onClick = { revealed = false; index++ }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Siguiente")
                 }
             }
-            Button(onClick = {
-                session = ArrayList(cards.map { it.id })
-                index = 0
-                revealed = false
-            }) { Text("Iniciar práctica") }
         }
-        index >= ids.size -> {
-            Text("Práctica terminada")
-            Button(onClick = { session = null }) { Text("Elegir otra práctica") }
-        }
-        else -> {
-            val card = cards.first { it.id == ids[index] }
-            Text("Tarjeta ${index + 1} de ${ids.size}")
-            Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineSmall)
-            if (spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
-            if (revealed) {
-                Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
-                if (!spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
-                if (card.example.isNotEmpty()) Text(card.example)
-                Button(onClick = { revealed = false; index++ }) { Text("Siguiente") }
-            } else {
-                Button(onClick = { revealed = true }) { Text("Mostrar respuesta") }
+        return
+    }
+
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when {
+            cards.isEmpty() -> {
+                Text("Agregá una tarjeta para empezar a practicar.")
+                Button(onClick = onAdd) { Text("Añadir tarjeta") }
+            }
+            ids == null -> {
+                Column(Modifier.selectableGroup()) {
+                    for (direction in listOf(true, false)) {
+                        val selected = spanishFirst == direction
+                        Row(Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton,
+                            onClick = { spanishFirst = direction }).heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = selected, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(if (direction) "Español → Inglés" else "Inglés → Español")
+                        }
+                    }
+                }
+                Button(onClick = {
+                    session = ArrayList(cards.map { it.id })
+                    index = 0
+                    revealed = false
+                }) { Text("Iniciar práctica") }
+            }
+            else -> {
+                Text("Práctica terminada")
+                Button(onClick = { session = null }) { Text("Elegir otra práctica") }
             }
         }
     }

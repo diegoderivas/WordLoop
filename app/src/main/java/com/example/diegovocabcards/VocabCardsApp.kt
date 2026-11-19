@@ -138,7 +138,8 @@ internal fun VocabCardsApp(
             val scroll = rememberScrollState()
             Column(
                 Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
-                    .then(if (screen == Screen.Library) Modifier else Modifier.verticalScroll(scroll))
+                    .then(if (screen in listOf(Screen.Library, Screen.Study, Screen.Manual)) Modifier
+                        else Modifier.verticalScroll(scroll))
                     .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -182,8 +183,7 @@ internal fun VocabCardsApp(
                         val queue = queues?.get(direction)
                         val loadedSchedules = schedules
                         if (queue != null && loadedSchedules != null) {
-                            ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings,
-                                onQuestionChanged = { scroll.scrollTo(0) }) {
+                            ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings) {
                                 screen = Screen.Home
                             }
                         } else Text("Cargando repasos…")

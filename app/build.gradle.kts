@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.fsrs)
     implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.genai.prompt)
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
     implementation(platform(libs.androidx.compose.bom))

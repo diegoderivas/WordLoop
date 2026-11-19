@@ -69,6 +69,50 @@ class MigrationTest {
         }
     }
 
+    @Test fun versionThreeRetainsCardsAndReviewsWhenAddingUsageNotes() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "usage-migration-${UUID.randomUUID()}.db"
+        val phase = com.example.diegovocabcards.review.Fsrs.rate(null, Rating.EASY, 1790000000000).phase.name
+        createLegacy(name, 3) { old ->
+            old.execSQL("INSERT INTO Entry VALUES (42, 'take off', 'verb')")
+            old.execSQL("INSERT INTO Sense VALUES ('flight',42,'despegar','The plane took off.','Begin flight','','verb','Dictionary')")
+            old.execSQL("INSERT INTO CardTag VALUES ('flight','viaje')")
+            old.execSQL("INSERT INTO ReviewEvent VALUES ('flight','ES_EN',1,'GOOD','$phase',NULL,3.0,6.0,1800000000000,1790000000000)")
+            old.execSQL("INSERT INTO ReviewEvent VALUES ('flight','EN_ES',1,'EASY','$phase',NULL,5.0,5.0,1810000000000,1790000000000)")
+        }
+        fun open() = Room.databaseBuilder(context, VocabularyDatabase::class.java, name).build()
+        var db = open()
+        try {
+            run {
+                val card = db.vocabulary().cards().first().single()
+                assertEquals("flight", card.id)
+                assertEquals("The plane took off.", card.example)
+                assertEquals("despegar", card.spanish)
+                assertEquals("Dictionary", card.source)
+                assertEquals(listOf("viaje"), card.tags)
+                assertEquals("", card.usageNote)
+                assertEquals("", card.generatedExamples)
+                assertEquals(1800000000000L, db.reviews().latest(card.id, Direction.ES_EN)?.memory?.dueAt)
+                assertEquals(Rating.EASY, db.reviews().latest(card.id, Direction.EN_ES)?.rating)
+                db.vocabulary().save(card.id, card.english, card.spanish, card.example, "viaje",
+                    card.definition, card.synonyms, card.senseCategories, source = card.source,
+                    usageNote = "Se usa para el inicio del vuelo.", generatedExamples = "We took off at dawn.")
+            }
+            db.close()
+            db = open()
+            run {
+                val card = db.vocabulary().cards().first().single()
+                assertEquals("Se usa para el inicio del vuelo.", card.usageNote)
+                assertEquals("We took off at dawn.", card.generatedExamples)
+                assertEquals("The plane took off.", card.example)
+                assertEquals(2, db.reviews().schedules().first().size)
+            }
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     @Test fun versionTwoPreservesAttributedSensesAndIndependentHistory() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "review-migration-${UUID.randomUUID()}.db"

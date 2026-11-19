@@ -25,7 +25,9 @@ internal data class Sense(
     @ColumnInfo(defaultValue = "''") val definition: String = "",
     @ColumnInfo(defaultValue = "''") val synonyms: String = "",
     @ColumnInfo(defaultValue = "''") val senseCategories: String = "",
-    @ColumnInfo(defaultValue = "''") val source: String = ""
+    @ColumnInfo(defaultValue = "''") val source: String = "",
+    @ColumnInfo(defaultValue = "''") val usageNote: String = "",
+    @ColumnInfo(defaultValue = "''") val generatedExamples: String = ""
 )
 
 @Entity(primaryKeys = ["cardId", "label"], foreignKeys = [
@@ -46,13 +48,15 @@ internal data class Card(
     val synonyms: String = "",
     val senseCategories: String = "",
     val entryCategories: String = "",
-    val source: String = ""
+    val source: String = "",
+    val usageNote: String = "",
+    val generatedExamples: String = ""
 )
 
 @Dao
 internal abstract class VocabularyDao {
     @Transaction
-    @Query("SELECT id, english, spanish, example, definition, synonyms, senseCategories, entryCategories, source FROM Sense JOIN Entry USING(entryId) ORDER BY Sense.rowid DESC")
+    @Query("SELECT id, english, spanish, example, definition, synonyms, senseCategories, entryCategories, source, usageNote, generatedExamples FROM Sense JOIN Entry USING(entryId) ORDER BY Sense.rowid DESC")
     abstract fun cards(): Flow<List<Card>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -77,12 +81,18 @@ internal abstract class VocabularyDao {
     protected abstract suspend fun categories(id: Long, categories: String)
 
     @Transaction
-    open suspend fun save(id: String, english: String, spanish: String, example: String, tags: String, definition: String = "", synonyms: String = "", senseCategories: String = "", entryCategories: String? = null, source: String = "") {
+    open suspend fun save(
+        id: String, english: String, spanish: String, example: String, tags: String,
+        definition: String = "", synonyms: String = "", senseCategories: String = "",
+        entryCategories: String? = null, source: String = "", usageNote: String = "",
+        generatedExamples: String = ""
+    ) {
         val term = english.trim()
         require(term.isNotEmpty() && spanish.isNotBlank())
         val inserted = insertEntry(Entry(english = term))
         val entryId = if (inserted == -1L) findEntry(term) else inserted
-        putSense(Sense(id, entryId, spanish.trim(), example.trim(), definition, synonyms, senseCategories, source))
+        putSense(Sense(id, entryId, spanish.trim(), example.trim(), definition, synonyms, senseCategories,
+            source, usageNote, generatedExamples))
         entryCategories?.let { categories(entryId, it) }
         clearTags(id)
         val labels = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
@@ -93,7 +103,7 @@ internal abstract class VocabularyDao {
 }
 
 @Database(entities = [Entry::class, Sense::class, CardTag::class, ReviewEvent::class],
-    version = 3, autoMigrations = [AutoMigration(from = 2, to = 3)])
+    version = 4, autoMigrations = [AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)])
 internal abstract class VocabularyDatabase : RoomDatabase() {
     abstract fun vocabulary(): VocabularyDao
     abstract fun reviews(): ReviewDao

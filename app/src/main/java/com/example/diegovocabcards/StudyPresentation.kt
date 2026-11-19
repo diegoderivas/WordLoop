@@ -1,0 +1,79 @@
+package com.example.diegovocabcards
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.example.diegovocabcards.data.Card
+
+@Composable
+internal fun StudyPresentation(
+    card: Card,
+    spanishFirst: Boolean,
+    revealed: Boolean,
+    caption: String,
+    onReveal: () -> Unit,
+    actions: @Composable ColumnScope.() -> Unit
+) {
+    if (revealed) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(caption, style = MaterialTheme.typography.labelLarge)
+            StudyTile(card, spanishFirst, revealed = true)
+            actions()
+        }
+    } else {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(caption, style = MaterialTheme.typography.labelLarge)
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    StudyTile(card, spanishFirst, revealed = false)
+                }
+            }
+            Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
+                Text("Mostrar respuesta", textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
+    val attributed = GOOGLE_TRANSLATION in card.source
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (spanishFirst) card.spanish else card.english,
+                    style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                if (spanishFirst && attributed) TranslationAttribution()
+            }
+            if (revealed) {
+                HorizontalDivider()
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (spanishFirst) card.english else card.spanish,
+                        style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                    if (!spanishFirst && attributed) TranslationAttribution()
+                }
+                if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
+                SavedUsageContent(card.usageNote, card.generatedExamples)
+            }
+        }
+    }
+}

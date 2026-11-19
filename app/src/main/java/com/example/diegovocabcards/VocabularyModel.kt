@@ -37,7 +37,7 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
         viewModelScope.launch {
             try {
                 dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
-                    editedEntryCategories, card.source)
+                    editedEntryCategories, card.source, card.usageNote, card.generatedExamples)
                 saved = SavedCard(card, next)
             } catch (failure: SQLiteException) {
                 failedId = card.id
