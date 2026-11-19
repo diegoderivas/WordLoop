@@ -173,7 +173,8 @@ internal fun VocabCardsApp(
                         }
                     }
                     Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }, onEdit = ::editCard)
-                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model) {}
+                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
+                        onOpenExisting = ::editCard) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
                         TextButton(onClick = { showProgress = true }) { Text("Progreso de repaso") }

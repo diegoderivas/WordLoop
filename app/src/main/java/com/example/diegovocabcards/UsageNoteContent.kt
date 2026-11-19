@@ -11,52 +11,30 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 
 @Composable
 internal fun UsageNoteOffer(
-    term: String,
-    sense: Suggestion,
-    generator: UsageNoteGenerator,
+    request: EditorRequest<UsageNoteResult>,
+    onRequest: (Boolean) -> Unit,
     enabled: Boolean,
     hasNote: Boolean,
     onSaveNote: (UsageNote) -> Unit,
     onAddExample: (String) -> Unit
 ) {
-    val focus = LocalFocusManager.current
-    var request by remember { mutableStateOf<Boolean?>(null) }
-    var progress by remember { mutableStateOf(UsageNoteProgress.Checking) }
-    var result by remember { mutableStateOf<UsageNoteResult?>(null) }
-    LaunchedEffect(request) {
-        val download = request ?: return@LaunchedEffect
-        val generated = generator.generate(usageNotePrompt(term, sense), download) { progress = it }
-        currentCoroutineContext().ensureActive()
-        result = generated
-        request = null
-    }
-
+    var hidden by remember(request.result) { mutableStateOf(false) }
     fun start(download: Boolean = false) {
-        focus.clearFocus()
-        progress = UsageNoteProgress.Checking
-        result = null
-        request = download
+        hidden = false
+        onRequest(download)
     }
 
-    if (request != null) {
-        Text(when (progress) {
-            UsageNoteProgress.Checking -> "Comprobando el modelo local…"
-            UsageNoteProgress.Downloading -> "Descargando Gemini Nano…"
-            UsageNoteProgress.Generating -> "Preparando la nota de uso…"
-        }, style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = { request = null }) { Text("Cancelar nota") }
+    if (request.loading) {
+        Text("Preparando la guía de uso…", style = MaterialTheme.typography.bodySmall)
         return
     }
-
+    val result = request.result.takeUnless { hidden }
     when (val details = result) {
-        null -> TextButton(onClick = { start() }, enabled = enabled) { Text("Entender el uso") }
+        null -> TextButton(onClick = { if (hidden) hidden = false else start() }, enabled = enabled) { Text("Entender el uso") }
         UsageNoteResult.Downloadable -> {
             Text("Gemini Nano está listo para descargar. Usá Wi-Fi si querés evitar el consumo de datos móviles.")
             TextButton(onClick = { start(download = true) }, enabled = enabled) { Text("Descargar modelo") }
@@ -88,21 +66,21 @@ internal fun UsageNoteOffer(
                     note.examples.forEachIndexed { index, example ->
                         Text(example)
                         PronunciationButton(example, "Escuchar ejemplo ${index + 1}")
-                        TextButton(onClick = { onAddExample(example); result = null }, enabled = enabled) {
+                        TextButton(onClick = { onAddExample(example); hidden = true }, enabled = enabled) {
                             Text("Añadir solo el ejemplo ${index + 1}")
                         }
                     }
-                    TextButton(onClick = { onSaveNote(note); result = null }, enabled = enabled) {
+                    TextButton(onClick = { onSaveNote(note); hidden = true }, enabled = enabled) {
                         Text(if (hasNote) "Reemplazar nota" else "Guardar nota")
                     }
                     TextButton(onClick = { start() }, enabled = enabled) { Text("Regenerar nota") }
-                    TextButton(onClick = { result = null }) { Text("Seguir sin usarla") }
+                    TextButton(onClick = { hidden = true }) { Text("Seguir sin usarla") }
                 }
             }
         }
     }
     if (result != null && result !is UsageNoteResult.Ready) {
-        TextButton(onClick = { result = null }) { Text("Cerrar nota") }
+        TextButton(onClick = { hidden = true }) { Text("Cerrar nota") }
     }
 }
 

@@ -2,6 +2,8 @@ package com.example.diegovocabcards
 
 import android.app.Application
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
@@ -54,14 +56,15 @@ class SuggestionsTest {
             compose.onNodeWithText("Elegí un ejemplo").assertExists()
             compose.onNodeWithText("We hired more staff.").performClick()
             compose.onNodeWithText("We hired more staff.").assertExists()
-            compose.onNodeWithText("employ").performScrollTo().assertIsSelected().performClick().assertIsNotSelected()
-            compose.onNodeWithText("employ").performClick().assertIsSelected()
+            compose.onNodeWithText("employ").performScrollTo().assertIsNotSelected().performClick().assertIsSelected()
+            compose.onNodeWithText("employ").performClick().assertIsNotSelected()
             compose.onNodeWithText("Categoría gramatical").assertExists()
             tap("Elegir ejemplo")
             compose.onNodeWithText("Continuar sin ejemplo").performClick()
             compose.onNodeWithText("We hired more staff.").assertDoesNotExist()
             tap(rent.definition)
-            compose.onNodeWithText("They hired a van.").assertExists()
+            compose.onNodeWithText("Conservar mis campos").performClick()
+            compose.onNodeWithText("Ejemplo en inglés (opcional)").assertTextContains("")
             compose.onNodeWithText("employ").assertDoesNotExist()
             compose.onNodeWithText("rent").assertExists()
             tap(incomplete.definition)
@@ -85,22 +88,26 @@ class SuggestionsTest {
     @Test fun lateTranslationFromAnotherSenseCannotReplaceTheCurrentProposal() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val showing = androidx.compose.runtime.mutableStateOf(true)
         try {
             val model = VocabularyModel(app, db)
             val flight = Suggestion("To leave the ground.", "verb", "dictionary")
             val breakTime = Suggestion("To take a break from work.", "verb", "dictionary")
             val removal = Suggestion("To remove.", "verb", "dictionary", listOf("quitarse"))
+            var googleCalls = 0
             val firstStarted = CompletableDeferred<Unit>()
             val firstResult = CompletableDeferred<String>()
+            val secondResult = CompletableDeferred<String>()
             compose.setContent {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (showing.value) Column(Modifier.verticalScroll(rememberScrollState())) {
                     CardEditor(null, "take off", emptyList(), emptyList(), model,
                         lookup = { listOf(flight, breakTime, removal) },
                         translate = { _, meaning ->
+                            googleCalls++
                             if (meaning == flight) withContext(NonCancellable) {
                                 firstStarted.complete(Unit)
                                 firstResult.await()
-                            } else "tomarse un descanso"
+                            } else secondResult.await()
                         }
                     ) {}
                 }
@@ -110,15 +117,21 @@ class SuggestionsTest {
             tap(removal.definition)
             compose.onNodeWithText("Traducir con Google").assertExists()
             tap(flight.definition)
-            tap("Traducir con Google")
             compose.waitUntil(5000) { firstStarted.isCompleted }
             tap(breakTime.definition)
-            tap("Traducir con Google")
+            val spanish = compose.onNodeWithText("Traducción al español")
+            spanish.performScrollTo().performTextReplacement("mi corrección")
+            secondResult.complete("tomarse un descanso")
             firstResult.complete("despegar")
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("tomarse un descanso").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("despegar").assertDoesNotExist()
+            spanish.assertTextContains("mi corrección")
+            tap(flight.definition)
+            tap(breakTime.definition)
+            spanish.assertTextContains("mi corrección")
+            assertEquals(2, googleCalls)
             tap("Usar traducción de Google")
             tap("Guardar")
             compose.waitUntil(5000) { model.saved != null }
@@ -127,6 +140,8 @@ class SuggestionsTest {
             assertEquals(breakTime.definition, saved.definition)
             assertTrue(GOOGLE_TRANSLATION in saved.source)
         } finally {
+            compose.runOnIdle { showing.value = false }
+            compose.waitForIdle()
             db.close()
         }
     }
@@ -143,14 +158,15 @@ class SuggestionsTest {
             val delayed = CompletableDeferred<String>()
             val started = CompletableDeferred<Unit>()
             compose.setContent {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(Modifier.safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())) {
                     CardEditor(null, "fire", emptyList(), emptyList(), model,
                         lookup = { if (it == "fire") listOf(flame, dismiss) else listOf(dismissed) },
                         translate = { _, _ -> "echar" },
                         nanoOptions = { _, sense, task ->
                             when {
-                                sense == flame -> withContext(NonCancellable) {
-                                    started.complete(Unit); listOf(delayed.await())
+                                sense == flame && task == SenseRequest.Translation -> withContext(NonCancellable) {
+                                    started.complete(Unit)
+                                    listOf(delayed.await())
                                 }
                                 task == SenseRequest.Synonyms -> listOf("sack", "discharge")
                                 sense == dismiss -> listOf("destituir")
@@ -179,12 +195,14 @@ class SuggestionsTest {
             compose.onNodeWithText("echar").assertExists()
             compose.onNodeWithText("Usar del diccionario · despedir").assertExists()
             spanish.assertTextContains("mi traducción")
+            spanish.performScrollTo().performTouchInput { click() }
+            captureEmulator("autocompletado-editor-teclado-claro.png")
             compose.onNodeWithText("Usar traducción de Gemini").performScrollTo()
             captureEmulator("editor-propuestas-claro.png")
             tap("Usar traducción de Google")
             tap("Usar traducción de Gemini")
             spanish.assertTextContains("destituir")
-            tap("Sugerir sinónimos con Gemini")
+            waitFor("sack")
             tap("sack")
             tap("Detalles opcionales")
             compose.onNodeWithText("Sinónimos (separados por comas)").assertTextContains("sack")
@@ -198,6 +216,7 @@ class SuggestionsTest {
             compose.onNodeWithText("Palabra o expresión en inglés").performScrollTo().performTextReplacement("get fired")
             waitFor(dismissed.definition)
             tap(dismissed.definition)
+            compose.onNodeWithText("Conservar mis campos").performClick()
             tap("Traducir con Gemini")
             tap("Usar traducción de Gemini")
             spanish.assertTextContains("ser despedido")

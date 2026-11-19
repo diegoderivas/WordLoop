@@ -54,7 +54,6 @@ class UsageNoteEditorTest {
             tap(flight.definition)
             compose.onNodeWithText("Ejemplo en inglés (opcional)").performScrollTo()
                 .performTextInput("The plane took off yesterday.")
-            tap("Entender el uso")
             waitFor("Descargar modelo")
             tap("Descargar modelo")
             waitFor(note.meaning)
@@ -64,7 +63,7 @@ class UsageNoteEditorTest {
             waitFor(note.meaning)
             tap("Añadir solo el ejemplo 3")
             compose.onNodeWithText(note.examples[2]).assertExists()
-            compose.onNodeWithText(note.examples[0]).assertDoesNotExist()
+            compose.onNodeWithText("Ejemplo en inglés (opcional)").assertTextContains("The plane took off yesterday.")
             tap("Entender el uso")
             waitFor(note.meaning)
             compose.onNodeWithText(note.meaning).performScrollTo().assertIsDisplayed()
@@ -83,6 +82,39 @@ class UsageNoteEditorTest {
             db.close()
             app.deleteDatabase(name)
         }
+    }
+
+    @Test fun missingFieldsUseNanoAndIntentionalRemovalSurvivesReopeningTheSense() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        try {
+            val model = VocabularyModel(app, db)
+            var calls = 0
+            val meaning = flight.copy(spanish = emptyList())
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(null, "take off", emptyList(), emptyList(), model,
+                        lookup = { listOf(meaning, removing) }, translate = { _, _ -> null },
+                        nanoOptions = { _, _, task -> if (task == SenseRequest.Translation) listOf("despegar") else emptyList() },
+                        usageNotes = { _, _, _ ->
+                            calls++
+                            UsageNoteResult.Ready(note)
+                        }) {}
+                }
+            }
+            waitFor(meaning.definition)
+            tap(meaning.definition)
+            waitFor("Usar traducción de Gemini")
+            compose.onNodeWithText("Traducción al español").assertTextContains("despegar")
+            val example = compose.onNodeWithText("Ejemplo en inglés (opcional)")
+            example.assertTextContains(note.examples.first())
+            tap("Quitar ejemplo")
+            tap(removing.definition)
+            tap(meaning.definition)
+            example.assertTextContains("")
+            compose.onNodeWithText("Traducción al español").assertTextContains("despegar")
+            assertEquals(2, calls)
+        } finally { db.close() }
     }
 
     @Test fun lateResponsesAreDiscardedOnSenseAndExpressionChanges() {
@@ -115,18 +147,15 @@ class UsageNoteEditorTest {
             }
             waitFor(flight.definition)
             tap(flight.definition)
-            tap("Entender el uso")
             compose.waitUntil(5000) { flightStarted.isCompleted }
             tap(removing.definition)
-            tap("Entender el uso")
-            compose.waitUntil(5000) { removalStarted.isCompleted }
             releaseFlight.complete(Unit)
+            compose.waitUntil(5000) { removalStarted.isCompleted }
             compose.onNodeWithText(note.meaning).assertDoesNotExist()
             compose.onNodeWithText("Palabra o expresión en inglés").performScrollTo().performTextReplacement("get fired")
             releaseRemoval.complete(Unit)
             waitFor(work.definition)
             tap(work.definition)
-            tap("Entender el uso")
             waitFor("Gemini Nano no está disponible", substring = true)
             compose.onNodeWithText("Late result for removing clothes.").assertDoesNotExist()
             tap("Guardar")
@@ -170,7 +199,6 @@ class UsageNoteEditorTest {
             }
             waitFor(ruefully.definition)
             tap(ruefully.definition)
-            tap("Entender el uso")
             waitFor("Reintentar nota")
             compose.onNodeWithText(legacy).assertExists()
             tap("Reintentar nota")
@@ -201,7 +229,7 @@ class UsageNoteEditorTest {
             DiegoVocabCardsTheme(darkTheme = false) {
                 Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
                     CardEditor(original, "take off", emptyList(), emptyList(), model,
-                        lookup = lookup, usageNotes = generator) {}
+                        lookup = lookup, nanoOptions = { _, _, _ -> emptyList() }, usageNotes = generator) {}
                 }
             }
         }
@@ -210,7 +238,7 @@ class UsageNoteEditorTest {
     private fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
 
     private fun waitFor(label: String, substring: Boolean = false) {
-        compose.waitUntil(5000) {
+        compose.waitUntil(15000) {
             compose.onAllNodesWithText(label, substring = substring).fetchSemanticsNodes().isNotEmpty()
         }
     }

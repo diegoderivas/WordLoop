@@ -89,40 +89,6 @@ internal fun senseTranslationEquivalent(response: String, term: String, category
     return candidate
 }
 
-/** Each request belongs to the expression and sense keyed by the editor. */
-@Composable
-internal fun SuggestionRequest(
-    label: String, enabled: Boolean, fetch: suspend () -> List<String>,
-    content: @Composable (List<String>) -> Unit
-) {
-    var request by remember { mutableIntStateOf(0) }
-    var working by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<List<String>?>(null) }
-    LaunchedEffect(request) {
-        if (request == 0) return@LaunchedEffect
-        val values = try {
-            fetch()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            emptyList()
-        }
-        currentCoroutineContext().ensureActive()
-        result = values
-        working = false
-    }
-    Column {
-        val focus = androidx.compose.ui.platform.LocalFocusManager.current
-        TextButton(onClick = { focus.clearFocus(); working = true; request++ }, enabled = enabled && !working) { Text(label) }
-        if (working) Text("Consultando en el dispositivo…", style = MaterialTheme.typography.bodySmall)
-        result?.let {
-            if (it.isEmpty()) Text("Sin propuesta disponible. Podés reintentar o completar a mano.",
-                style = MaterialTheme.typography.bodySmall)
-            else content(it)
-        }
-    }
-}
-
 @Composable
 internal fun TranslatedText(value: String, attributed: Boolean) {
     if (attributed) {
