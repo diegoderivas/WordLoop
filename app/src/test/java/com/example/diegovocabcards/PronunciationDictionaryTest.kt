@@ -23,9 +23,16 @@ class PronunciationDictionaryTest {
         val source = "Colaboradores de Wiktionary · record · CC BY-SA 4.0"
         val english = Wiktionary.parse(html, source, "record", "record")
         assertEquals(2, english.size)
-        assertEquals(DictionaryPronunciation("UK /ˈɹɛkɔːd/", source), english[0].pronunciation)
+        assertEquals(DictionaryPronunciation("/ˈɹɛkɔːd/", source), english[0].pronunciation)
         assertEquals(DictionaryPronunciation("/ɹɪˈkɔːd/", source), english[1].pronunciation)
         assertTrue(Wiktionary.parse(html, source, "records", "record").all { it.pronunciation == null })
+    }
+
+    @Test fun prefersBritishThenAmericanAndAcceptsAnOlderUnlabelledTranscription() {
+        assertEquals("/fɑː/", preferredIpa("US /fɑɹ/ · UK /fɑː/"))
+        assertEquals("/fɑɹ/", preferredIpa("Australia /fɐː/ · General American /fɑɹ/"))
+        assertEquals("/ɹʌn/", preferredIpa("/ɹʌn/"))
+        assertNull(preferredIpa("unknown"))
     }
 
     @Test fun audioOnlyOrUnrelatedIpaDoesNotCreateATranscription() {

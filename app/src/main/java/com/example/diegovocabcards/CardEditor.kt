@@ -287,22 +287,22 @@ internal fun CardEditor(
         model.save(draft, next, editedEntryCategories)
     }
 
-    OutlinedTextField(english, { value ->
-        if (value.trim() != currentQuery) {
-            automatic.forEach { setValue(it, "") }
-            automaticFields = arrayListOf()
-            activeSource = ""
-            exampleSource = ""
-            synonymSource = ""
-            translationSource = ""
-            ipa = ""
-            ipaSource = ""
-        }
-        english = value
-    }, Modifier.fillMaxWidth(), enabled = !busy,
-        label = { Text("Palabra o expresión en inglés") }, singleLine = true)
-    IpaContent(ipa, ipaSource)
-    PronunciationButton(currentQuery)
+    EnglishPronunciation(currentQuery, ipa) {
+        OutlinedTextField(english, { value ->
+            if (value.trim() != currentQuery) {
+                automatic.forEach { setValue(it, "") }
+                automaticFields = arrayListOf()
+                activeSource = ""
+                if (MeaningField.Example in automatic) exampleSource = ""
+                if (MeaningField.Synonyms in automatic) synonymSource = ""
+                if (MeaningField.Spanish in automatic) translationSource = ""
+                ipa = ""
+                ipaSource = ""
+            }
+            english = value
+        }, Modifier.weight(1f), enabled = !busy,
+            label = { Text("Palabra o expresión en inglés") }, singleLine = true)
+    }
     if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
         Text("Significados", style = MaterialTheme.typography.titleMedium)
         if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
@@ -355,7 +355,7 @@ internal fun CardEditor(
                 confirmButton = { TextButton(onClick = { more = false }) { Text("Cerrar") } })
         }
     }
-    val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource,
+    val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource, ipaSource,
         *suggestions.map { it.source }.toTypedArray())
     if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text("Fuente y licencia") }
     if (showSources && sources.isNotEmpty()) {

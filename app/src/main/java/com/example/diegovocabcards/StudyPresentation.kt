@@ -64,26 +64,40 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (spanishFirst) card.spanish else card.english,
-                    style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
-                if (!spanishFirst) IpaContent(card.ipa, card.ipaSource)
-                if (spanishFirst && attributed) TranslationAttribution()
-                if (spanishFirst && GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
+            val questionStyle = MaterialTheme.typography.headlineMedium
+            val answerStyle = MaterialTheme.typography.titleLarge
+            if (spanishFirst) {
+                SpanishStudyText(card, questionStyle, attributed)
+            } else {
+                EnglishStudyText(card, questionStyle)
             }
             if (revealed) {
                 HorizontalDivider()
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (spanishFirst) card.english else card.spanish,
-                        style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-                    if (spanishFirst) IpaContent(card.ipa, card.ipaSource)
-                    if (!spanishFirst && attributed) TranslationAttribution()
-                    if (!spanishFirst && GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
+                if (spanishFirst) {
+                    EnglishStudyText(card, answerStyle)
+                } else {
+                    SpanishStudyText(card, answerStyle, attributed)
                 }
-                PronunciationButton(card.english)
                 if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
                 SavedUsageContent("", card.generatedExamples)
             }
         }
+    }
+}
+
+@Composable
+private fun EnglishStudyText(card: Card, style: androidx.compose.ui.text.TextStyle) {
+    EnglishPronunciation(card.english, card.ipa) {
+        Spacer(Modifier.width(48.dp))
+        Text(card.english, Modifier.weight(1f), style = style, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun SpanishStudyText(card: Card, style: androidx.compose.ui.text.TextStyle, attributed: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(card.spanish, style = style, textAlign = TextAlign.Center)
+        if (attributed) TranslationAttribution()
+        if (GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
     }
 }

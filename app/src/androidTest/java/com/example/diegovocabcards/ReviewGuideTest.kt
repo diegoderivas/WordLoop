@@ -52,9 +52,9 @@ class ReviewGuideTest {
             }
             compose.setContent { active?.let { key(it) { VocabCardsApp(Appearance.Light, it, guideGenerator = generator) {} } } }
             tap("Repasar en inglés")
-            compose.onNodeWithText("IPA · /test/").assertDoesNotExist()
+            compose.onNodeWithText("/test/").assertDoesNotExist()
             tap("Mostrar respuesta")
-            compose.onNodeWithText("IPA · /test/").assertExists()
+            compose.onNodeWithText("/test/").assertExists()
             tap("Editar tarjeta")
             compose.onNodeWithText("Traducción al español").performScrollTo().performTextReplacement("que te despidan")
             tap("Guardar")
@@ -77,7 +77,7 @@ class ReviewGuideTest {
             db = open()
             compose.runOnIdle { active = VocabularyModel(app, db) }
             tap("Repasar en español")
-            compose.onNodeWithText("IPA · /test/").assertExists()
+            compose.onNodeWithText("/test/").assertExists()
             tap("Mostrar respuesta")
             book.performScrollTo().performClick()
             compose.onNodeWithText(note.forStorage()).assertExists()

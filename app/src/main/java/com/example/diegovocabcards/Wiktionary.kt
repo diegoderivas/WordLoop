@@ -84,9 +84,9 @@ internal object Wiktionary {
                     .map { variant ->
                         val labels = variant.labels.filterNot { senseText(it) in categories }.distinct()
                         (labels + variant.text).joinToString(" ")
-                    }.distinct().take(3).joinToString(" · ")
+                    }.distinct().joinToString(" · ")
                 sense.copy(spanish = spanish[index].orEmpty(), source = attribution,
-                    pronunciation = ipa.takeIf(String::isNotBlank)?.let { DictionaryPronunciation(it, source) })
+                    pronunciation = preferredIpa(ipa)?.let { DictionaryPronunciation(it, source) })
             }
             linkedSection = false
             senses = mutableListOf()

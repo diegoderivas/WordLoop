@@ -6,13 +6,16 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -25,6 +28,22 @@ internal fun ipaTranscription(raw: String): String? = raw.trim().takeIf {
     it.length in 3..120 && ((it.startsWith('/') && it.endsWith('/')) ||
         (it.startsWith('[') && it.endsWith(']'))) && it.drop(1).dropLast(1).any(Char::isLetter)
 }
+
+private val ipaNotation = Regex("""/[^/]+/|\[[^\]]+\]""")
+private val britishIpaLabel = Regex("""\b(uk|britain|british|rp|received pronunciation)\b""")
+private val americanIpaLabel = Regex("""\b(us|usa|american|genam)\b""")
+
+internal fun preferredIpa(raw: String): String? = raw.split(" · ").mapNotNull { variant ->
+    val notation = ipaNotation.find(variant) ?: return@mapNotNull null
+    val valid = ipaTranscription(notation.value) ?: return@mapNotNull null
+    val region = variant.substring(0, notation.range.first).lowercase(Locale.ROOT)
+    val priority = when {
+        britishIpaLabel.containsMatchIn(region) -> 0
+        americanIpaLabel.containsMatchIn(region) -> 1
+        else -> 2
+    }
+    priority to "/${valid.drop(1).dropLast(1)}/"
+}.minByOrNull { it.first }?.second
 
 internal enum class SpeechState { Idle, Loading, Speaking, Unavailable }
 
@@ -165,31 +184,43 @@ internal fun ProvideAndroidPronunciation(lifecycle: Lifecycle, content: @Composa
 }
 
 @Composable
-internal fun PronunciationButton(text: String, label: String = "Escuchar pronunciación") {
-    if (text.isBlank()) return
+internal fun PronunciationButton(text: String, label: String) {
+    PronunciationControl(text) { play ->
+        TextButton(onClick = play) { Text(label) }
+    }
+}
+
+@Composable
+internal fun EnglishPronunciation(
+    text: String, ipa: String, content: @Composable RowScope.() -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        PronunciationControl(text) { play ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                content()
+                if (text.isNotBlank()) {
+                    IconButton(onClick = play) {
+                        Icon(painterResource(R.drawable.pronunciation_speaker), "Escuchar pronunciación")
+                    }
+                }
+            }
+        }
+        preferredIpa(ipa)?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+    }
+}
+
+@Composable
+private fun PronunciationControl(text: String, button: @Composable (() -> Unit) -> Unit) {
     val player = LocalPronunciationPlayer.current
     var requested by remember(player, text) { mutableStateOf(false) }
-    TextButton(onClick = { requested = true; player?.speak(text) }) {
-        Text(label)
+    button {
+        requested = true
+        player?.speak(text)
     }
     if (requested && (player == null ||
             (player.requestedText == text && player.state == SpeechState.Unavailable))) {
         Text("No hay una voz inglesa local disponible.", style = MaterialTheme.typography.bodySmall)
     } else if (player?.requestedText == text && player.state == SpeechState.Loading) {
         Text("Preparando la voz local…", style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-@Composable
-internal fun IpaContent(ipa: String, source: String) {
-    if (ipa.isBlank() || source.isBlank()) return
-    val uriHandler = LocalUriHandler.current
-    val attribution = source.lineSequence().first()
-    val link = source.lineSequence().firstOrNull { it.startsWith("https://") }
-    Column {
-        Text("IPA · $ipa", style = MaterialTheme.typography.titleSmall)
-        if (link != null) {
-            TextButton(onClick = { runCatching { uriHandler.openUri(link) } }) { Text(attribution) }
-        } else Text(attribution, style = MaterialTheme.typography.bodySmall)
     }
 }
