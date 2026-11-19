@@ -76,6 +76,8 @@ internal fun CardEditor(
     var translationSource by rememberSaveable { mutableStateOf("") }
     var usageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
     var generatedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
+    var ipa by rememberSaveable { mutableStateOf(original?.ipa.orEmpty()) }
+    var ipaSource by rememberSaveable { mutableStateOf(original?.ipaSource.orEmpty()) }
     val currentValues = mapOf(
         MeaningField.Spanish to spanish, MeaningField.Definition to definition,
         MeaningField.Categories to senseCategories, MeaningField.Example to example,
@@ -106,6 +108,8 @@ internal fun CardEditor(
     }
 
     val currentQuery = english.trim()
+    val pronunciationPlayer = LocalPronunciationPlayer.current
+    DisposableEffect(pronunciationPlayer, currentQuery) { onDispose { pronunciationPlayer?.stop() } }
     var suggestions by remember(currentQuery) { mutableStateOf(emptyList<Suggestion>()) }
     var queryState by remember(currentQuery) { mutableStateOf("") }
     var proposed by remember(currentQuery) { mutableStateOf<Suggestion?>(null) }
@@ -143,6 +147,8 @@ internal fun CardEditor(
         manualFields = ArrayList(manualFields - automaticFields.toSet())
         activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
         translationSource = ""
+        ipa = value.pronunciation?.ipa.orEmpty()
+        ipaSource = value.pronunciation?.source.orEmpty()
         selectedKey = value.selectionKey()
         choosingExample = value.examples.distinct().size > 1 &&
             (MeaningField.Example in automatic || MeaningField.Example in applied)
@@ -180,7 +186,7 @@ internal fun CardEditor(
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
         synonyms, senseCategories, entryCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource)),
-        usageNote, generatedExamples)
+        usageNote, generatedExamples, ipa, ipaSource)
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -196,10 +202,14 @@ internal fun CardEditor(
             automaticFields = arrayListOf()
             activeSource = ""
             translationSource = ""
+            ipa = ""
+            ipaSource = ""
         }
         english = value
     }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Palabra o expresión en inglés") }, singleLine = true)
+    PronunciationButton(currentQuery)
+    IpaContent(ipa, ipaSource)
     if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
         Text("Significados", style = MaterialTheme.typography.titleMedium)
         if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)

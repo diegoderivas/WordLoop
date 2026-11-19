@@ -87,6 +87,7 @@ internal fun UsageNoteOffer(
                     if (note.examples.isNotEmpty()) Text("Examples", style = MaterialTheme.typography.titleSmall)
                     note.examples.forEachIndexed { index, example ->
                         Text(example)
+                        PronunciationButton(example, "Escuchar ejemplo ${index + 1}")
                         TextButton(onClick = { onAddExample(example); result = null }, enabled = enabled) {
                             Text("Añadir solo el ejemplo ${index + 1}")
                         }

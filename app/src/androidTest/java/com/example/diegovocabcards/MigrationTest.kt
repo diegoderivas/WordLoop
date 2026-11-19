@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.diegovocabcards.data.VocabularyDatabase
 import com.example.diegovocabcards.review.Direction
+import com.example.diegovocabcards.review.Fsrs
 import io.github.openspacedrepetition.Rating
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -66,6 +67,46 @@ class MigrationTest {
             }
             seed(old)
             old.version = version
+        }
+    }
+
+    @Test fun versionFourRetainsTheGuideAndReviewWhenAddingIpa() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "migration-4-to-5-${UUID.randomUUID()}.db"
+        val legacy = "Meaning\nA run is a period of running."
+        val phase = Fsrs.rate(null, Rating.GOOD, 1790000000000).phase.name
+        createLegacy(name, 4) { old ->
+            old.execSQL("INSERT INTO Entry VALUES (42, 'run', 'noun')")
+            old.execSQL("INSERT INTO Sense VALUES ('run',42,'carrera','A morning run.','','','noun','',?,'We went for a run.')",
+                arrayOf(legacy))
+            old.execSQL("INSERT INTO ReviewEvent VALUES ('run','EN_ES',1,'GOOD','$phase',NULL,3.0,6.0,1800000000000,1790000000000)")
+        }
+        fun open() = Room.databaseBuilder(context, VocabularyDatabase::class.java, name).build()
+        val source = "Colaboradores de Wiktionary · run · CC BY-SA 4.0\nhttps://en.wiktionary.org/wiki/run#Pronunciation"
+        var db = open()
+        try {
+            run {
+                val card = db.vocabulary().cards().first().single()
+                assertEquals(legacy, card.usageNote)
+                assertEquals("We went for a run.", card.generatedExamples)
+                assertEquals("", card.ipa)
+                assertEquals("", card.ipaSource)
+                db.vocabulary().save(card.id, card.english, card.spanish, card.example, "",
+                    senseCategories = card.senseCategories, usageNote = card.usageNote,
+                    generatedExamples = card.generatedExamples, ipa = "/ɹʌn/", ipaSource = source)
+            }
+            db.close()
+            db = open()
+            run {
+                val updated = db.vocabulary().cards().first().single()
+                assertEquals("/ɹʌn/", updated.ipa)
+                assertEquals(source, updated.ipaSource)
+                assertEquals(legacy, updated.usageNote)
+                assertEquals(1800000000000, db.reviews().latest("run", Direction.EN_ES)?.memory?.dueAt)
+            }
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
         }
     }
 

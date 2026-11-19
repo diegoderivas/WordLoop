@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -20,6 +21,8 @@ internal fun StudyPresentation(
     onReveal: () -> Unit,
     actions: @Composable ColumnScope.() -> Unit
 ) {
+    val player = LocalPronunciationPlayer.current
+    DisposableEffect(player, card.id) { onDispose { player?.stop() } }
     if (revealed) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -71,6 +74,8 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
                         style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
                     if (!spanishFirst && attributed) TranslationAttribution()
                 }
+                PronunciationButton(card.english)
+                IpaContent(card.ipa, card.ipaSource)
                 if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
                 SavedUsageContent(card.usageNote, card.generatedExamples)
             }

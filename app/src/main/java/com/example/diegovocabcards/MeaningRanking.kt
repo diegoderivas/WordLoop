@@ -112,6 +112,6 @@ internal fun getConstruction(senses: List<Suggestion>): List<Suggestion> = sense
         it.copy(
             category = "phrase", usage = listOf("A partir del participio", it.usage)
                 .filter { label -> label.isNotBlank() }.joinToString(" · "),
-            spanish = emptyList(), examples = emptyList(), synonymOptions = emptyList()
+            spanish = emptyList(), examples = emptyList(), synonymOptions = emptyList(), pronunciation = null
         )
     }

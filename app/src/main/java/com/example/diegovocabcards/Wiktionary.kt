@@ -28,6 +28,10 @@ internal object Wiktionary {
         "numeral", "article", "prefix", "suffix", "idiom", "abbreviation", "symbol"
     )
     private val prefixBoundary = setOf(',', ';', ':', '(')
+    private val pronunciationHeading = Regex("pronunciation(?: [0-9]+)?")
+    private val etymologyHeading = Regex("etymology(?: [0-9]+)?")
+
+    private data class IpaVariant(val text: String, val labels: List<String>)
 
     fun hasTranslationSubpage(html: String, title: String): Boolean =
         html.contains("title=\"$title/translations\"")
@@ -42,6 +46,9 @@ internal object Wiktionary {
         var category = ""
         var categoryDepth = 0
         var inDefinitions = false
+        var inPronunciation = false
+        val variants = mutableListOf<IpaVariant>()
+        val exactEntry = senseText(requested) == senseText(title)
         var senses = mutableListOf<Suggestion>()
         var linkedSection = false
         var definitionList = 0
@@ -69,7 +76,17 @@ internal object Wiktionary {
             }
             results += senses.mapIndexed { index, sense ->
                 val attribution = if (index in fromSupplement) "$source\n\n${supplement!!.source}" else source
-                sense.copy(spanish = spanish[index].orEmpty(), source = attribution)
+                val ipa = variants.asSequence()
+                    .filter { variant ->
+                        val partsOfSpeech = variant.labels.map(::senseText).filter { it in categories }
+                        partsOfSpeech.isEmpty() || category in partsOfSpeech
+                    }
+                    .map { variant ->
+                        val labels = variant.labels.filterNot { senseText(it) in categories }.distinct()
+                        (labels + variant.text).joinToString(" ")
+                    }.distinct().take(3).joinToString(" · ")
+                sense.copy(spanish = spanish[index].orEmpty(), source = attribution,
+                    pronunciation = ipa.takeIf(String::isNotBlank)?.let { DictionaryPronunciation(it, source) })
             }
             linkedSection = false
             senses = mutableListOf()
@@ -89,12 +106,23 @@ internal object Wiktionary {
                     categoryDepth = 0
                 }
                 if (depth == 2) english = name == "english"
+                if (depth == 2 || etymologyHeading.matches(name)) variants.clear()
+                inPronunciation = english && exactEntry && pronunciationHeading.matches(name)
                 if (english && name in categories) {
                     category = name
                     categoryDepth = depth
                     inDefinitions = true
                 }
                 continue
+            }
+            if (inPronunciation) {
+                for (notation in node.select(".IPA")) {
+                    val text = ipaTranscription(notation.text()) ?: continue
+                    val labels = notation.closest("li")?.select(".qualifier-content, .ib-content")
+                        ?.eachText().orEmpty().flatMap { it.split(',') }.map(String::trim)
+                        .filter { it.isNotBlank() && it.length <= 45 }
+                    variants += IpaVariant(text, labels)
+                }
             }
             if (!english || category.isEmpty()) continue
             if (inDefinitions && node.normalName() == "ol") {

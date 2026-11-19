@@ -29,6 +29,9 @@ class StudyLayoutTest {
             captureEmulator("piloto-atribucion-biblioteca-claro.png")
             tap("run")
             compose.onNodeWithText("Editar tarjeta").assertIsDisplayed()
+            compose.onNodeWithText("IPA · /ɹʌn/").assertIsDisplayed()
+            compose.onNodeWithText("Escuchar pronunciación").assertIsDisplayed()
+            captureEmulator("5a-editor-ipa-claro.png")
             compose.onAllNodesWithContentDescription(attribution).assertCountEquals(1)
             captureEmulator("piloto-atribucion-editor-claro.png")
             compose.onNodeWithContentDescription("Volver").performClick()
@@ -36,6 +39,8 @@ class StudyLayoutTest {
             tap("Repasar en español")
             checkQuestionLayout("run")
             compose.onNodeWithText("correr").assertDoesNotExist()
+            compose.onNodeWithText("Escuchar pronunciación").assertDoesNotExist()
+            compose.onNodeWithText("IPA · /ɹʌn/").assertDoesNotExist()
             compose.onNodeWithContentDescription("Traducción automática de Google Translate").assertDoesNotExist()
             captureEmulator("piloto-repasar-antes-claro.png")
             tap("Mostrar respuesta")
@@ -44,7 +49,9 @@ class StudyLayoutTest {
             compose.onNodeWithText("I run when I have time.").assertIsDisplayed()
             compose.onNodeWithText("Bien").assertIsDisplayed()
             compose.onNodeWithText("10 min").assertIsDisplayed()
-            captureEmulator("piloto-repasar-despues-claro.png")
+            captureEmulator("5a-repaso-audio-claro.png")
+            tap("Escuchar pronunciación")
+            compose.onNodeWithText("No hay una voz inglesa local disponible.").assertIsDisplayed()
             tap("Fácil")
             compose.waitUntil(5000) { runBlocking { db.reviews().schedules().first().size == 1 } }
         }
@@ -59,9 +66,11 @@ class StudyLayoutTest {
             tap("Iniciar práctica")
             checkQuestionLayout(english)
             compose.onNodeWithText("leer entre líneas").assertDoesNotExist()
+            compose.onNodeWithText("Escuchar pronunciación").assertDoesNotExist()
             captureEmulator("piloto-practica-antes-oscuro.png")
             tap("Mostrar respuesta")
             compose.onNodeWithText("leer entre líneas").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Escuchar pronunciación").assertIsDisplayed()
             captureEmulator("piloto-practica-despues-oscuro.png")
             tap("Ver nota de uso")
             compose.onNodeWithText("Una nota guardada para esta acepción.").assertExists()
@@ -81,7 +90,9 @@ class StudyLayoutTest {
                 else "I run when I have time."
             runBlocking {
                 db.vocabulary().save("card", english, spanish, example, "", source = GOOGLE_TRANSLATION,
-                    usageNote = if (dark) "Una nota guardada para esta acepción." else "")
+                    usageNote = if (dark) "Una nota guardada para esta acepción." else "",
+                    ipa = if (dark) "" else "/ɹʌn/",
+                    ipaSource = if (dark) "" else "Colaboradores de Wiktionary · run · CC BY-SA 4.0\nhttps://en.wiktionary.org/wiki/run#Pronunciation")
             }
             val model = VocabularyModel(app, db)
             compose.setContent {

@@ -33,12 +33,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
             DiegoVocabCardsTheme(darkTheme = dark) {
-                VocabCardsApp(mode, vocabulary, reviewSettings, onReviewSettingsChange = {
-                    reviewPreferences.writeReviewSettings(it)
-                    reviewSettings = it
-                }) { selected ->
-                    preferences.edit().putString("theme", selected.key).apply()
-                    mode = selected
+                ProvideAndroidPronunciation(lifecycle) {
+                    VocabCardsApp(mode, vocabulary, reviewSettings, onReviewSettingsChange = {
+                        reviewPreferences.writeReviewSettings(it)
+                        reviewSettings = it
+                    }) { selected ->
+                        preferences.edit().putString("theme", selected.key).apply()
+                        mode = selected
+                    }
                 }
             }
         }

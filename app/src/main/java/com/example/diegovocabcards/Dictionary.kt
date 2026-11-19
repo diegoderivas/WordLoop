@@ -20,7 +20,8 @@ internal data class Suggestion(
     val examples: List<String> = emptyList(),
     val synonymOptions: List<String> = emptyList(),
     val usage: String = "",
-    val family: String = ""
+    val family: String = "",
+    val pronunciation: DictionaryPronunciation? = null
 )
 
 internal fun categoryLabel(category: String): String = when (category) {
@@ -145,6 +146,13 @@ internal object Dictionary {
                     entry.getJSONArray("sourceUrls").let { urls ->
                         (0 until urls.length()).joinToString("\n") { urls.getString(it) }
                     } + "\n" + license.optString("url")
+                val ipa = if (senseText(entry.optString("word")) == senseText(term)) {
+                    val phonetics = entry.optJSONArray("phonetics") ?: JSONArray()
+                    (listOf(entry.optString("phonetic")) + (0 until phonetics.length()).map {
+                        phonetics.optJSONObject(it)?.optString("text").orEmpty()
+                    }).mapNotNull(::ipaTranscription).distinct().take(3).joinToString(" · ")
+                } else ""
+                val pronunciation = ipa.takeIf(String::isNotBlank)?.let { DictionaryPronunciation(it, source) }
                 val meanings = entry.getJSONArray("meanings")
                 for (j in 0 until meanings.length()) {
                     val meaning = meanings.getJSONObject(j)
@@ -155,7 +163,8 @@ internal object Dictionary {
                         add(Suggestion(
                             definition.getString("definition"), meaning.optString("partOfSpeech"), source,
                             examples = listOf(definition.optString("example")).filter { it.isNotBlank() },
-                            synonymOptions = (0 until synonyms.length()).map { synonyms.getString(it) }
+                            synonymOptions = (0 until synonyms.length()).map { synonyms.getString(it) },
+                            pronunciation = pronunciation
                         ))
                     }
                 }
