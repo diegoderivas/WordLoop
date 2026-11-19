@@ -51,7 +51,7 @@ class ReviewGuideTest {
                 if (++calls == 1) UsageNoteResult.Unavailable else UsageNoteResult.Ready(note)
             }
             compose.setContent { active?.let { key(it) { VocabCardsApp(Appearance.Light, it, guideGenerator = generator) {} } } }
-            tap("Repasar en inglés")
+            tap("Repasar en ambos sentidos")
             compose.onNodeWithText("/test/").assertDoesNotExist()
             tap("Mostrar respuesta")
             compose.onNodeWithText("/test/").assertExists()
@@ -76,7 +76,8 @@ class ReviewGuideTest {
             db.close()
             db = open()
             compose.runOnIdle { active = VocabularyModel(app, db) }
-            tap("Repasar en español")
+            tap("Opciones avanzadas")
+            tap("Inglés → Español")
             compose.onNodeWithText("/test/").assertExists()
             tap("Mostrar respuesta")
             book.performScrollTo().performClick()

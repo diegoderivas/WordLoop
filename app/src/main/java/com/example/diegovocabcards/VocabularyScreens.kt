@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
+import com.example.diegovocabcards.review.Direction
 
 
 @Composable
@@ -96,7 +97,7 @@ internal fun Library(
 
 @Composable
 internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit = {}, onAdd: () -> Unit) {
-    var spanishFirst by rememberSaveable { mutableStateOf(true) }
+    var direction by rememberSaveable { mutableStateOf<Direction?>(null) }
     var session by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     var index by rememberSaveable { mutableIntStateOf(0) }
     var revealed by rememberSaveable { mutableStateOf(false) }
@@ -104,7 +105,8 @@ internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit =
     val card = cards.find { it.id == ids?.getOrNull(index) }
     if (ids != null && card != null) {
         key(card.id, index) {
-            StudyPresentation(card, spanishFirst, revealed, "Tarjeta ${index + 1} de ${ids.size}",
+            val spanishFirst = direction == Direction.ES_EN || (direction == null && index < ids.size / 2)
+            StudyPresentation(card, spanishFirst, revealed, "Pregunta ${index + 1} de ${ids.size}",
                 onReveal = { revealed = true }, cardTools = cardTools) {
                 Button(onClick = { revealed = false; index++ }, modifier = Modifier.fillMaxWidth()) {
                     Text("Siguiente")
@@ -122,19 +124,20 @@ internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit =
             }
             ids == null -> {
                 Column(Modifier.selectableGroup()) {
-                    for (direction in listOf(true, false)) {
-                        val selected = spanishFirst == direction
+                    for (side in listOf(null) + Direction.entries) {
+                        val selected = direction == side
                         Row(Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton,
-                            onClick = { spanishFirst = direction }).heightIn(min = 48.dp),
+                            onClick = { direction = side }).heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selected, onClick = null)
                             Spacer(Modifier.width(12.dp))
-                            Text(if (direction) "Español → Inglés" else "Inglés → Español")
+                            Text(side?.label ?: "Ambos sentidos")
                         }
                     }
                 }
                 Button(onClick = {
-                    session = ArrayList(cards.map { it.id })
+                    val senses = cards.map { it.id }
+                    session = ArrayList(if (direction == null) senses + senses else senses)
                     index = 0
                     revealed = false
                 }) { Text("Iniciar práctica") }

@@ -56,7 +56,8 @@ class DailyWorkflowTest {
             compose.onNodeWithText("despedir").assertDoesNotExist()
             assertTrue(runBlocking { db.backup().events().isEmpty() })
             tap("Inicio")
-            tap("Repasar en español")
+            tap("Opciones avanzadas")
+            tap("Inglés → Español")
             tap("Mostrar respuesta")
             tap("Bien")
             compose.waitUntil(10000) { runBlocking { db.backup().countEvents() == 1 } }

@@ -29,6 +29,37 @@ class ScheduledReviewTest {
         node.performClick()
     }
 
+    @Test fun mixedSessionGradesOnlyTheDisplayedDirection() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val showing = androidx.compose.runtime.mutableStateOf(true)
+        try {
+            runBlocking { db.vocabulary().save("one", "fire", "fuego", "", "") }
+            val model = VocabularyModel(app, db)
+            compose.setContent { if (showing.value) VocabCardsApp(Appearance.Light, model) {} }
+            click("Repasar en ambos sentidos")
+            compose.onNodeWithText("fuego").assertIsDisplayed()
+            compose.onNodeWithText("fire").assertDoesNotExist()
+            click("Mostrar respuesta")
+            click("Bien")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("Inglés → Español · Nueva").fetchSemanticsNodes().isNotEmpty() }
+            val first = runBlocking { db.reviews().latest("one", Direction.ES_EN) }
+            assertNotNull(first)
+            assertNull(runBlocking { db.reviews().latest("one", Direction.EN_ES) })
+            compose.onNodeWithText("fuego").assertDoesNotExist()
+            click("Mostrar respuesta")
+            click("Fácil")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Calificaciones guardadas: 2").assertExists()
+            assertEquals(first, runBlocking { db.reviews().latest("one", Direction.ES_EN) })
+            assertEquals(io.github.openspacedrepetition.Rating.EASY, runBlocking { db.reviews().latest("one", Direction.EN_ES) }!!.rating)
+        } finally {
+            compose.runOnIdle { showing.value = false }
+            compose.waitForIdle()
+            db.close()
+        }
+    }
+
     @Test fun failedWriteKeepsRevealedCardAndManualPracticeLeavesHistoryIntact() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
@@ -49,7 +80,8 @@ class ScheduledReviewTest {
                         clock = clock) {}
                 }
             }
-            click("Repasar en inglés")
+            click("Opciones avanzadas")
+            click("Español → Inglés")
             compose.onNodeWithText("correr").assertIsDisplayed()
             compose.onNodeWithText("run").assertDoesNotExist()
             compose.onNodeWithText(example).assertDoesNotExist()
@@ -75,9 +107,11 @@ class ScheduledReviewTest {
             }
             compose.onNodeWithText("Calificaciones guardadas: 1").assertExists()
             click("Volver a Inicio")
-            compose.onNodeWithText("Repasar en inglés").assertIsNotEnabled()
+            click("Opciones avanzadas")
+            compose.onNodeWithText("Español → Inglés").assertIsNotEnabled()
             compose.onNodeWithText("Próximo repaso", substring = true).assertExists()
             click("Repasar")
+            click("Opciones avanzadas")
             click("Inglés → Español")
             compose.onNodeWithText("run").assertIsDisplayed()
             compose.onNodeWithText("correr").assertDoesNotExist()
@@ -88,6 +122,7 @@ class ScheduledReviewTest {
             }
             compose.onNodeWithContentDescription("Volver").performClick()
             click("Práctica manual sin calificar")
+            click("Español → Inglés")
             click("Iniciar práctica")
             click("Mostrar respuesta")
             click("Siguiente")

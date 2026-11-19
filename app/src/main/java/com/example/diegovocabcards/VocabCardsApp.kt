@@ -54,13 +54,13 @@ internal fun VocabCardsApp(
     val scheduleFlow = remember(model) { model.reviews.schedules() }
     val schedules by scheduleFlow.collectAsState(initial = null)
     val queues = rememberReviewQueues(rows, schedules, clock)
-    var direction by rememberSaveable { mutableStateOf(Direction.ES_EN) }
+    var direction by rememberSaveable { mutableStateOf<Direction?>(null) }
     var libraryTag by rememberSaveable { mutableStateOf<String?>(null) }
     var manualTag by rememberSaveable { mutableStateOf<String?>(null) }
     var studyOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     var settingsOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     val mainScreen = mainTabs.any { it.first == screen }
-    fun startStudy(selected: Direction) {
+    fun startStudy(selected: Direction?) {
         direction = selected
         studyOrigin = screen
         screen = Screen.Study
@@ -225,7 +225,7 @@ internal fun VocabCardsApp(
                         val loadedSchedules = schedules
                         if (queue != null && loadedSchedules != null) {
                             sessionState.SaveableStateProvider(Screen.Study.name) {
-                                ScheduledReview(direction, queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools) {
+                                ScheduledReview(queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools) {
                                     sessionState.removeState(Screen.Study.name)
                                     screen = Screen.Home
                                 }

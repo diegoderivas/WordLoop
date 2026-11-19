@@ -20,11 +20,12 @@ internal data class ReviewEvent(
     @Embedded val memory: Memory
 )
 
-internal data class Schedule(val senseId: String, val direction: Direction, val turn: Int, val dueAt: Long)
+internal data class Schedule(val senseId: String, val direction: Direction, val turn: Int, val dueAt: Long,
+    val phase: io.github.openspacedrepetition.State = io.github.openspacedrepetition.State.REVIEW)
 
 @Dao
 internal abstract class ReviewDao {
-    @Query("""SELECT e.senseId, e.direction, e.turn, e.dueAt FROM ReviewEvent e
+    @Query("""SELECT e.senseId, e.direction, e.turn, e.dueAt, e.phase FROM ReviewEvent e
         WHERE e.turn = (SELECT MAX(h.turn) FROM ReviewEvent h
             WHERE h.senseId = e.senseId AND h.direction = e.direction)""")
     abstract fun schedules(): Flow<List<Schedule>>

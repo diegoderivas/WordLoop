@@ -19,9 +19,9 @@ class PracticeTest {
         )
         compose.setContent { Column { Practice(cards) {} } }
         compose.onNodeWithText("Iniciar práctica").performClick()
-        for (card in cards) {
-            compose.onNodeWithText(card.spanish).assertIsDisplayed()
-            compose.onNodeWithText(card.english).assertDoesNotExist()
+        for (spanishFirst in listOf(true, false)) for (card in cards) {
+            compose.onNodeWithText(if (spanishFirst) card.spanish else card.english).assertIsDisplayed()
+            compose.onNodeWithText(if (spanishFirst) card.english else card.spanish).assertDoesNotExist()
             compose.onNodeWithText(card.example).assertDoesNotExist()
             compose.onNodeWithText("Mostrar respuesta").performClick()
             compose.onNodeWithText(card.english).assertIsDisplayed()

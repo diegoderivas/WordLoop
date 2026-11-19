@@ -38,11 +38,11 @@ internal fun rememberReviewQueues(
     cards: List<Card>?,
     schedules: List<Schedule>?,
     clock: Clock
-): Map<Direction, StudyQueue>? {
+): Map<Direction?, StudyQueue>? {
     var now by remember(clock) { mutableLongStateOf(clock.millis()) }
     val queues = remember(cards, schedules, now) {
         if (cards == null || schedules == null) null
-        else Direction.entries.associateWith { studyQueue(cards, schedules, it, now) }
+        else (listOf(null) + Direction.entries).associateWith { studyQueue(cards, schedules, it, now) }
     }
     val wakeAt = queues?.values?.mapNotNull { it.nextDue }?.minOrNull()
     LaunchedEffect(wakeAt, clock, schedules) {
@@ -57,53 +57,36 @@ internal fun rememberReviewQueues(
 
 @Composable
 internal fun ReviewDirections(
-    queues: Map<Direction, StudyQueue>?,
+    queues: Map<Direction?, StudyQueue>?,
     home: Boolean,
-    onStart: (Direction) -> Unit
+    onStart: (Direction?) -> Unit
 ) {
-    Text(if (home) "Para repasar" else "Elegí el sentido", style = MaterialTheme.typography.headlineSmall)
+    Text(if (home) "Para repasar" else "Repaso programado", style = MaterialTheme.typography.headlineSmall)
     if (queues == null) {
         Text("Cargando repasos…")
         return
     }
-    for ((direction, queue) in queues) {
-        val colors = if (home && direction == Direction.ES_EN) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        } else CardDefaults.outlinedCardColors()
-        val enabled = queue.ready.isNotEmpty()
-        val details: @Composable () -> Unit = {
-            Text(direction.label, style = MaterialTheme.typography.titleMedium)
-            Text("Pendientes: ${queue.dueCount} · Nuevas: ${queue.newCount}",
-                style = MaterialTheme.typography.bodyMedium)
-            if (!enabled) queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+    val mixed = queues.getValue(null)
+    Text("Pendientes: ${mixed.dueCount} · Nuevas: ${mixed.newCount}")
+    Button(onClick = { onStart(null) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+        Text("Repasar en ambos sentidos")
+    }
+    if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+    var advanced by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { advanced = !advanced }) { Text("Opciones avanzadas") }
+    if (advanced) for (direction in Direction.entries) {
+        val queue = queues.getValue(direction)
+        OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(),
+            enabled = queue.ready.isNotEmpty()) {
+            Text(direction.label)
         }
-        if (home) {
-            OutlinedCard(Modifier.fillMaxWidth(), colors = colors) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    details()
-                    val label = if (direction == Direction.ES_EN) "Repasar en inglés" else "Repasar en español"
-                    if (direction == Direction.ES_EN) {
-                        Button(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
-                            Text(label)
-                        }
-                    } else {
-                        OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
-                            Text(label)
-                        }
-                    }
-                }
-            }
-        } else {
-            OutlinedCard(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { details() }
-            }
-        }
+        Text("Pendientes: ${queue.dueCount} · Nuevas: ${queue.newCount}", style = MaterialTheme.typography.bodySmall)
+        if (queue.ready.isEmpty()) queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
     }
 }
 
 @Composable
 internal fun ScheduledReview(
-    direction: Direction,
     queue: StudyQueue,
     schedules: List<Schedule>,
     dao: ReviewDao,
@@ -116,7 +99,8 @@ internal fun ScheduledReview(
     var turn by rememberSaveable { mutableIntStateOf(0) }
     var completed by rememberSaveable { mutableIntStateOf(0) }
     var finished by rememberSaveable { mutableStateOf(false) }
-    val question = queue.ready.find { it.card.id == currentId && it.turn == turn }
+    var side by rememberSaveable { mutableStateOf(Direction.ES_EN) }
+    val question = queue.ready.find { it.card.id == currentId && it.turn == turn && it.direction == side }
     if (finished) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Repaso terminado", style = MaterialTheme.typography.headlineSmall)
@@ -129,19 +113,20 @@ internal fun ScheduledReview(
         }
     } else if (question == null) {
         // Advance only once Room has published the committed turn.
-        LaunchedEffect(currentId, turn, queue, schedules) {
-            if (schedules.any { it.senseId == currentId && it.direction == direction && it.turn > turn }) completed++
-            val next = queue.ready.firstOrNull()
+        LaunchedEffect(currentId, side, turn, queue, schedules) {
+            if (schedules.any { it.senseId == currentId && it.direction == side && it.turn > turn }) completed++
+            val next = queue.nextAfter(currentId)
             if (next == null) finished = true
             else {
                 currentId = next.card.id
+                side = next.direction
                 turn = next.turn
             }
         }
     } else {
-        key(question.card.id, turn) {
-            StudyQuestion(question.card, direction, question.turn, dao, clock, settings, cardTools) { rating, revealedAt ->
-                dao.rate(question.card.id, direction, question.turn, rating, clock.millis(), settings, revealedAt)
+        key(question.card.id, question.direction, turn) {
+            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools) { rating, revealedAt ->
+                dao.rate(question.card.id, question.direction, question.turn, rating, clock.millis(), settings, revealedAt)
             }
         }
     }
