@@ -33,6 +33,9 @@ internal abstract class ReviewDao {
         ORDER BY turn DESC LIMIT 1""")
     abstract suspend fun latest(id: String, direction: Direction): ReviewEvent?
 
+    @Query("SELECT * FROM ReviewEvent WHERE senseId = :id AND direction = :direction ORDER BY turn DESC LIMIT 5")
+    abstract suspend fun recent(id: String, direction: Direction): List<ReviewEvent>
+
     @Insert
     protected abstract suspend fun append(event: ReviewEvent)
 

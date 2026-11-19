@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.example.diegovocabcards.data.LibrarySettings
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.VocabularyDatabase
 import kotlinx.coroutines.launch
@@ -14,10 +16,18 @@ import kotlinx.coroutines.launch
 internal enum class AfterSave { Library, AnotherCard, AnotherSense, Study }
 internal data class SavedCard(val card: Card, val next: AfterSave)
 
-internal class VocabularyModel(app: Application, database: VocabularyDatabase) : AndroidViewModel(app) {
+internal class VocabularyModel(app: Application, private val database: VocabularyDatabase) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, VocabularyDatabase.get(app))
 
     private val dao = database.vocabulary()
+    val backup = database.backup()
+    fun configure(fallback: LibrarySettings, change: (LibrarySettings) -> LibrarySettings) {
+        viewModelScope.launch {
+            database.withTransaction {
+                backup.configure(change(backup.settings() ?: fallback))
+            }
+        }
+    }
     val reviews = database.reviews()
 
     val guideScope get() = viewModelScope

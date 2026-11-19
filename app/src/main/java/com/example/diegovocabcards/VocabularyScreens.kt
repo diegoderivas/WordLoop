@@ -22,7 +22,8 @@ import com.example.diegovocabcards.data.Card
 @Composable
 internal fun Library(
     cards: List<Card>, knownTags: List<String>, highlighted: String?,
-    onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit
+    onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit,
+    onProgress: (String) -> Unit = {}
 ) {
     var exposedId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
@@ -82,6 +83,7 @@ internal fun Library(
                     TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
                     if (GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
                     if (card.example.isNotEmpty()) Text(card.example, style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = { onProgress(card.id) }) { Text("Ver progreso") }
                     if (card.tags.isNotEmpty()) Text(card.tags.joinToString(" · "),
                         style = MaterialTheme.typography.labelLarge)
                 }

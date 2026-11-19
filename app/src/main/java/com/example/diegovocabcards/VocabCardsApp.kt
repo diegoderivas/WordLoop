@@ -41,6 +41,7 @@ internal fun VocabCardsApp(
     clock: Clock = Clock.systemUTC(),
     guideGenerator: UsageNoteGenerator = NanoUsageNotes,
     automaticSpeech: Boolean = true,
+    backupDefaults: com.example.diegovocabcards.data.LibrarySettings = com.example.diegovocabcards.data.LibrarySettings(),
     onAutomaticSpeech: (Boolean) -> Unit = {},
     onModeChange: (Appearance) -> Unit
 ) {
@@ -177,8 +178,12 @@ internal fun VocabCardsApp(
                             Text("Añadir tarjeta")
                         }
                     }
-                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
-                        onEdit = ::editCard, onDelete = model::deleteSense)
+                    Screen.Library -> {
+                        var progressId by rememberSaveable { mutableStateOf<String?>(null) }
+                        progressId?.let { ReviewDetails(it, model.reviews) { progressId = null } }
+                        Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
+                        onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it })
+                    }
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
                         onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
@@ -223,6 +228,7 @@ internal fun VocabCardsApp(
                             Switch(automaticSpeech, onCheckedChange = onAutomaticSpeech)
                         }
                         AppearanceOptions(mode, onModeChange)
+                        BackupOptions(model.backup, backupDefaults)
                     }
                     Screen.ReviewOptions -> ReviewOptions(reviewSettings) {
                         onReviewSettingsChange(it)

@@ -114,8 +114,8 @@ private fun ReviewNumberField(
 
 @Composable
 internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit) {
-    val events by produceState<List<Pair<Direction, ReviewEvent?>>?>(null, dao, senseId) {
-        value = Direction.entries.map { it to dao.latest(senseId, it) }
+    val events by produceState<List<Pair<Direction, List<ReviewEvent>>>?>(null, dao, senseId) {
+        value = Direction.entries.map { it to dao.recent(senseId, it) }
     }
     AlertDialog(
         onDismissRequest = onClose,
@@ -124,7 +124,8 @@ internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit)
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val loaded = events
                 if (loaded == null) Text("Cargando progreso…")
-                else for ((direction, event) in loaded) {
+                else for ((direction, history) in loaded) {
+                    val event = history.firstOrNull()
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(direction.label, style = MaterialTheme.typography.titleSmall)
                         if (event == null) Text("Nueva")
@@ -136,9 +137,14 @@ internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit)
                                 State.RELEARNING -> "Paso de reaprendizaje"
                             }
                             val grade = reviewChoices.first { it.first == event.rating }.second
-                            Text(phase)
+                            Text(if (memory.dueAt <= System.currentTimeMillis()) "Pendiente · $phase" else "Programada · $phase")
                             Text("Última calificación: $grade · ${formatReviewDate(memory.reviewedAt)}")
                             Text("Próximo repaso: ${formatReviewDate(memory.dueAt)}")
+                            Text("Historial reciente", style = MaterialTheme.typography.labelLarge)
+                            for (item in history) {
+                                val label = reviewChoices.first { it.first == item.rating }.second
+                                Text("${formatReviewDate(item.memory.reviewedAt)} · $label")
+                            }
                         }
                     }
                 }
