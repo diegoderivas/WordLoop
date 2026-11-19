@@ -18,6 +18,8 @@ internal fun distinctMeanings(suggestions: List<Suggestion>): List<Suggestion> =
         )
     }
 
+internal data class TranslationPage(val html: String, val source: String)
+
 internal object Wiktionary {
     private val headings = setOf("h2", "h3", "h4", "h5", "h6")
     private val categories = setOf(
@@ -27,7 +29,13 @@ internal object Wiktionary {
     )
     private val prefixBoundary = setOf(',', ';', ':', '(')
 
-    fun parse(html: String, source: String, requested: String, title: String): List<Suggestion> {
+    fun hasTranslationSubpage(html: String, title: String): Boolean =
+        html.contains("title=\"$title/translations\"")
+
+    fun parse(
+        html: String, source: String, requested: String, title: String,
+        supplement: TranslationPage? = null
+    ): List<Suggestion> {
         val document = Jsoup.parseBodyFragment(html)
         val root = document.selectFirst(".mw-parser-output") ?: document.body()
         var english = false
@@ -35,21 +43,35 @@ internal object Wiktionary {
         var categoryDepth = 0
         var inDefinitions = false
         var senses = mutableListOf<Suggestion>()
+        var linkedSection = false
+        var definitionList = 0
+        val supplemental = supplement?.let { subpageTables(it.html) }.orEmpty()
         val translations = mutableListOf<Pair<String, List<String>>>()
         val results = mutableListOf<Suggestion>()
 
         fun finishCategory() {
             val spanish = mutableMapOf<Int, List<String>>()
+            val fromSupplement = mutableSetOf<Int>()
             for ((label, equivalents) in translations) {
-                val exact = senses.indices.filter { senseText(senses[it].definition) == label }
-                val matching = exact.ifEmpty {
-                    senses.indices.filter { isUniqueClauseCandidate(senseText(senses[it].definition), label) }
-                }
-                matching.singleOrNull()?.let { index ->
+                findTranslationSense(senses, label)?.let { index ->
                     spanish[index] = (spanish[index].orEmpty() + equivalents).distinctBy(::senseText)
                 }
             }
-            results += senses.mapIndexed { index, sense -> sense.copy(spanish = spanish[index].orEmpty()) }
+            if (linkedSection && supplement != null) {
+                for ((label, equivalents) in supplemental[category].orEmpty()) {
+                    findTranslationSense(senses, label, allowShortCaption = true)?.let { index ->
+                        if (index !in spanish) {
+                            spanish[index] = equivalents.take(1)
+                            fromSupplement += index
+                        }
+                    }
+                }
+            }
+            results += senses.mapIndexed { index, sense ->
+                val attribution = if (index in fromSupplement) "$source\n\n${supplement!!.source}" else source
+                sense.copy(spanish = spanish[index].orEmpty(), source = attribution)
+            }
+            linkedSection = false
             senses = mutableListOf()
             translations.clear()
         }
@@ -76,6 +98,7 @@ internal object Wiktionary {
             }
             if (!english || category.isEmpty()) continue
             if (inDefinitions && node.normalName() == "ol") {
+                definitionList++
                 for (item in node.select("li")) {
                     if (item.parent()?.normalName() != "ol") continue
                     val local = item.clone()
@@ -87,20 +110,17 @@ internal object Wiktionary {
                     local.select("dl, .usage-label-sense, .mw-editsection, .reference").remove()
                     val definition = local.text().trim()
                     if (definition.isNotBlank()) {
+                        val rootSense = item.parents().firstOrNull { it.parent() === node } ?: item
+                        val family = if (rootSense.children().any { it.normalName() == "ol" }) {
+                            "$definitionList:${rootSense.elementSiblingIndex()}"
+                        } else ""
                         senses += Suggestion(definition, category, source, usage = usage,
-                            examples = example, synonymOptions = synonyms)
+                            examples = example, synonymOptions = synonyms, family = family)
                     }
                 }
             }
-            for (table in node.select("table.translations[data-gloss]")) {
-                val label = senseText(table.attr("data-gloss"))
-                val terms = table.select("li").filter { row: Element -> row.ownText().startsWith("Spanish:") }
-                    .flatMap { row ->
-                        row.select("[lang=es]").filter { term: Element -> term.closest(".ttbc") == null }
-                            .map { it.text().trim() }
-                    }.filter { it.isNotEmpty() }
-                if (label.isNotEmpty() && terms.isNotEmpty()) translations += label to terms
-            }
+            if (supplement != null && hasTranslationSubpage(node.outerHtml(), title)) linkedSection = true
+            translations += spanishTables(node)
         }
         finishCategory()
 
@@ -113,11 +133,78 @@ internal object Wiktionary {
                 sense.examples.any { words.containsMatchIn(senseText(it.replace("(", "").replace(")", ""))) }
             }
         } else results
-        return distinctMeanings(relevant).sortedWith(
-            compareByDescending<Suggestion> { it.spanish.isNotEmpty() }
-                .thenByDescending { it.examples.isNotEmpty() }
-                .thenByDescending { it.category == "verb" }
-        )
+        return distinctMeanings(relevant)
+    }
+
+    private fun subpageTables(html: String): Map<String, List<Pair<String, List<String>>>> {
+        val document = Jsoup.parseBodyFragment(html)
+        val root = document.selectFirst(".mw-parser-output") ?: document.body()
+        val result = mutableMapOf<String, MutableList<Pair<String, List<String>>>>()
+        var english = false
+        var category = ""
+        for (node in root.children()) {
+            val heading = node.takeIf { it.normalName() in headings }
+                ?: node.takeIf { it.hasClass("mw-heading") }?.children()?.firstOrNull()
+            if (heading?.normalName() == "h2") {
+                english = senseText(heading.text()) == "english"
+                category = ""
+            }
+            if (!english) continue
+            val name = heading?.let { senseText(it.text()) }
+            if (name in categories) category = name.orEmpty()
+            if (category.isNotEmpty()) result.getOrPut(category) { mutableListOf() } += spanishTables(node)
+        }
+        return result
+    }
+
+    private fun spanishTables(node: Element): List<Pair<String, List<String>>> =
+        node.select("table.translations[data-gloss]").mapNotNull { table ->
+            val label = senseText(table.attr("data-gloss"))
+            val terms = table.select("li").filter { row: Element -> row.ownText().startsWith("Spanish:") }
+                .flatMap { row ->
+                    row.select("[lang=es]").filter { term: Element -> term.closest(".ttbc") == null }
+                        .map { it.text().trim() }
+                }.filter { it.isNotEmpty() }
+            if (label.isEmpty() || terms.isEmpty()) null else label to terms
+        }
+
+    private fun findTranslationSense(
+        senses: List<Suggestion>, caption: String, allowShortCaption: Boolean = false
+    ): Int? {
+        val grammar = caption.substringBefore(':').takeIf { it == "transitive" || it == "intransitive" }
+        val label = if (grammar != null) caption.substringAfter(':').trim() else caption
+        val candidates = senses.indices.filter {
+            grammar == null || Regex("\\b$grammar\\b").containsMatchIn(senseText(senses[it].usage))
+        }
+        val exact = candidates.filter { senseText(senses[it].definition) == label }
+        if (exact.isNotEmpty()) return exact.singleOrNull()
+
+        val clauses = candidates.filter { isUniqueClauseCandidate(senseText(senses[it].definition), label) }
+        if (clauses.isNotEmpty()) {
+            if (grammar != null && clauses.size > 1) {
+                // A table labelled only by grammatical role describes the general use if unambiguous.
+                return clauses.singleOrNull { senseText(senses[it].usage) == grammar }
+            }
+            return clauses.singleOrNull()
+        }
+        if (grammar != null) {
+            return candidates.singleOrNull {
+                senseText(senses[it].usage) == grammar &&
+                    senseText(senses[it].definition).startsWith("$label ")
+            }
+        }
+        if (!allowShortCaption) return null
+        val words = lexicalWords(label).map(::stem).toSet()
+        if (words.size < 2) return null
+        return candidates.singleOrNull { index ->
+            val gloss = lexicalWords(senses[index].definition).map(::stem).toSet()
+            gloss.containsAll(words)
+        }
+    }
+
+    private fun stem(word: String): String {
+        if (word.length < 5) return word
+        return word.removeSuffix("ing").removeSuffix("ed").removeSuffix("s").removeSuffix("e")
     }
 
     private fun isUniqueClauseCandidate(gloss: String, label: String): Boolean {

@@ -187,14 +187,20 @@ internal fun CardEditor(
                 focus.clearFocus()
             }
         }
-        val top = suggestions.take(3)
-        val visible = if (selected != null && selected !in top) top.take(2) + selected else top
+        val groups = remember(suggestions, currentQuery) { rankedMeaningGroups(suggestions, currentQuery) }
+        val top = groups.take(3)
+        val visible = if (selected != null && top.none { selected == it.representative || selected in it.variants }) {
+            top.take(2) + MeaningGroup(selected, emptyList())
+        } else top
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            visible.forEach { suggestion ->
-                MeaningOption(suggestion, suggestion == selected, busy) { choose(suggestion) }
+            visible.forEach { group ->
+                val suggestion = selected?.takeIf { it in group.variants } ?: group.representative
+                MeaningOption(suggestion, suggestion == selected, busy, variantCount = group.variants.size) {
+                    choose(suggestion)
+                }
             }
         }
-        if (suggestions.size > 3) {
+        if (suggestions.size > top.size) {
             TextButton(onClick = { focus.clearFocus(); more = true }) { Text("Ver más significados") }
         }
         if (more) {
@@ -202,8 +208,18 @@ internal fun CardEditor(
                 title = { Text("Significados") },
                 text = {
                     LazyColumn(Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(suggestions) { suggestion ->
-                            MeaningOption(suggestion, suggestion == selected, busy, expanded = true) { choose(suggestion) }
+                        groups.forEach { group ->
+                            item {
+                                val sense = group.representative
+                                MeaningOption(sense, sense == selected, busy, expanded = true) { choose(sense) }
+                            }
+                            items(group.variants) { variant ->
+                                Box(Modifier.padding(start = 12.dp)) {
+                                    MeaningOption(variant, variant == selected, busy, expanded = true, variant = true) {
+                                        choose(variant)
+                                    }
+                                }
+                            }
                         }
                     }
                 },
@@ -324,6 +340,8 @@ private fun MeaningOption(
     chosen: Boolean,
     busy: Boolean,
     expanded: Boolean = false,
+    variant: Boolean = false,
+    variantCount: Int = 0,
     onClick: () -> Unit
 ) {
     OutlinedCard(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth(),
@@ -331,10 +349,15 @@ private fun MeaningOption(
             MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(listOf(categoryLabel(suggestion.category), suggestion.usage)
+            Text(listOf(if (variant) "Variante" else "", categoryLabel(suggestion.category), suggestion.usage)
                 .filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium)
+            if (variantCount > 0) {
+                Text(if (variantCount == 1) "1 variante en el detalle" else "$variantCount variantes en el detalle",
+                    style = MaterialTheme.typography.labelSmall)
+            }
             if (suggestion.spanish.isNotEmpty()) {
-                Text(suggestion.spanish.joinToString(" · "), style = MaterialTheme.typography.titleSmall)
+                val equivalents = if (expanded) suggestion.spanish else suggestion.spanish.take(2)
+                Text(equivalents.joinToString(" · "), style = MaterialTheme.typography.titleSmall)
             }
             Text(suggestion.definition, maxLines = if (expanded || chosen) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)

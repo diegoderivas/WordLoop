@@ -33,7 +33,7 @@ class SuggestionsTest {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     CardEditor(null, "", emptyList(), emptyList(), model, lookup = { query ->
                         if (query == "offline") throw java.io.IOException("disconnected")
-                        listOf(work, work, rent, incomplete, Suggestion("Payment", "noun", "SOURCE"))
+                        listOf(work, work, rent, incomplete, Suggestion("Payment", "adjective", "SOURCE"))
                     }) {}
                 }
             }

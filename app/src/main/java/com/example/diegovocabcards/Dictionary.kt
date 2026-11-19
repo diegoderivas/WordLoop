@@ -19,7 +19,8 @@ internal data class Suggestion(
     val spanish: List<String> = emptyList(),
     val examples: List<String> = emptyList(),
     val synonymOptions: List<String> = emptyList(),
-    val usage: String = ""
+    val usage: String = "",
+    val family: String = ""
 )
 
 internal fun categoryLabel(category: String): String = when (category) {
@@ -54,33 +55,51 @@ internal object Dictionary {
     suspend fun lookup(term: String): List<Suggestion> = withContext(Dispatchers.IO) {
         val query = term.trim().replace(Regex("\\s+"), " ")
         synchronized(cache) { cache[query] }?.let { return@withContext it }
-        val fromWiki = try {
-            queryWiki(query)
-        } catch (_: IOException) {
-            emptyList()
-        } catch (_: JSONException) {
-            emptyList()
-        }
+        val exact = wikiMeanings(query)
         ensureActive()
-        val result = if (fromWiki.isNotEmpty()) fromWiki else queryFallback(query)
+        val phrase = if (exact.isEmpty()) {
+            participleFromGet(query)?.let { getConstruction(wikiMeanings(it)) }.orEmpty()
+        } else emptyList()
+        ensureActive()
+        val result = exact.ifEmpty { phrase }.ifEmpty { queryFallback(query) }
         ensureActive()
         if (result.isNotEmpty()) synchronized(cache) { cache[query] = result }
         result
     }
 
-    private fun queryWiki(term: String): List<Suggestion> {
+    private data class WikiPage(val html: String, val title: String, val source: String)
+
+    private fun wikiMeanings(term: String): List<Suggestion> {
+        val page = fetchWikiIfAvailable(term) ?: return emptyList()
+        val translations = if (Wiktionary.hasTranslationSubpage(page.html, page.title)) {
+            fetchWikiIfAvailable("${page.title}/translations")
+                ?.takeIf { it.title == "${page.title}/translations" }
+                ?.let { TranslationPage(it.html, it.source) }
+        } else null
+        return Wiktionary.parse(page.html, page.source, term, page.title, translations)
+    }
+
+    private fun fetchWikiIfAvailable(term: String): WikiPage? = try {
+        fetchWiki(term)
+    } catch (_: IOException) {
+        null
+    } catch (_: JSONException) {
+        null
+    }
+
+    private fun fetchWiki(term: String): WikiPage? {
         val body = request(
             "https://en.wiktionary.org/w/api.php?action=parse&format=json&formatversion=2" +
                 "&prop=text%7Crevid&redirects=1&disableeditsection=1&disablelimitreport=1&page=${encoded(term)}"
-        ) ?: return emptyList()
+        ) ?: return null
         val response = JSONObject(body)
-        val page = response.optJSONObject("parse") ?: return emptyList()
+        val page = response.optJSONObject("parse") ?: return null
         val title = page.getString("title")
         val revision = page.getLong("revid")
         val source = "Colaboradores de Wiktionary · $title · CC BY-SA 4.0\n" +
             "https://en.wiktionary.org/w/index.php?oldid=$revision\n" +
             "https://creativecommons.org/licenses/by-sa/4.0/"
-        return Wiktionary.parse(page.getString("text"), source, term, title)
+        return WikiPage(page.getString("text"), title, source)
     }
 
     private fun encoded(text: String) = URLEncoder.encode(text, "UTF-8").replace("+", "%20")

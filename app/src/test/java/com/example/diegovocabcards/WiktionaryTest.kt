@@ -6,31 +6,63 @@ import org.junit.Test
 class WiktionaryTest {
     @Test fun liveWiktionaryCoverage() {
         org.junit.Assume.assumeTrue(System.getenv("VOCAB_LIVE_DICTIONARY") == "1")
-        val requests = listOf("hire", "run", "take off", "look up", "brush up on")
+        val requests = listOf("fire", "get fired", "hire", "run", "take off", "look up", "brush up on")
         for (term in requests) {
-            val path = java.net.URLEncoder.encode(term, "UTF-8").replace("+", "%20")
+            val exact = liveMeanings(term)
+            val results = exact.ifEmpty {
+                participleFromGet(term)?.let { getConstruction(liveMeanings(it)) }.orEmpty()
+            }
+            val groups = rankedMeaningGroups(results, term)
+            val first = groups.take(3).map { it.representative }
+            println("$term: ${results.size} senses · " +
+                results.flatMap { it.spanish }.distinct().joinToString(", "))
+            println("Initial $term: " + first.map { Triple(it.category, it.definition, it.spanish) })
+            assertTrue("Missing definitions for $term", first.isNotEmpty())
+            if (term == "fire") {
+                assertTrue(first.any { it.category == "noun" && ("fuego" in it.spanish || "incendio" in it.spanish) })
+                assertTrue(first.any { "despedir" in it.spanish })
+                assertEquals(1, first.count { "disparar" in it.spanish })
+                assertTrue(groups.take(3).any { "disparar" in it.representative.spanish && it.variants.isNotEmpty() })
+            }
+            if (term == "get fired") {
+                assertEquals("phrase", first.first().category)
+                assertTrue(first.first().definition.contains("employment"))
+            }
+            if (term == "hire") {
+                val job = first.single { "contratar" in it.spanish }
+                val rental = first.single { "alquilar" in it.spanish && it.category == "verb" }
+                assertNotEquals(job.definition, rental.definition)
+                assertTrue(job.examples.isNotEmpty())
+                assertTrue(rental.examples.isNotEmpty())
+                assertTrue("rent" in rental.synonymOptions)
+            }
+            if (term == "run") assertTrue(first.map { it.category }.containsAll(listOf("noun", "verb")))
+            if (term == "take off") assertTrue(first.any { "flight" in it.definition })
+            if (term == "look up") assertTrue(first.any { "information" in it.definition })
+        }
+    }
+
+    private fun liveMeanings(term: String): List<Suggestion> {
+        fun page(name: String): org.jsoup.nodes.Element? {
+            val path = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
             val response = org.jsoup.Jsoup.connect(
                 "https://en.wiktionary.org/w/api.php?action=parse&format=xml&prop=text" +
                     "&redirects=1&disableeditsection=1&disablelimitreport=1&page=$path"
             ).ignoreContentType(true)
                 .userAgent("DiegoVocabCards/1.0 (dictionary integration verification)")
                 .timeout(10_000).execute()
-            val page = org.jsoup.Jsoup.parse(response.body(), "", org.jsoup.parser.Parser.xmlParser())
-            val canonical = page.selectFirst("parse")!!.attr("title")
-            val html = page.selectFirst("parse > text")!!.wholeText()
-            val results = Wiktionary.parse(html, "Wiktionary", term, canonical)
-            println("$term: ${results.size} senses · " +
-                results.flatMap { it.spanish }.distinct().joinToString(", "))
-            assertTrue("Missing definitions for $term", results.isNotEmpty())
-            if (term == "hire") {
-                val job = results.take(3).single { "contratar" in it.spanish }
-                val rental = results.take(3).single { "alquilar" in it.spanish && it.category == "verb" }
-                assertNotEquals(job.definition, rental.definition)
-                assertTrue(job.examples.isNotEmpty())
-                assertTrue(rental.examples.isNotEmpty())
-                assertTrue("rent" in rental.synonymOptions)
-            }
+            return org.jsoup.Jsoup.parse(response.body(), "", org.jsoup.parser.Parser.xmlParser())
+                .selectFirst("parse")
         }
+        val entry = page(term) ?: return emptyList()
+        val canonical = entry.attr("title")
+        val html = entry.selectFirst("text")!!.wholeText()
+        val supplement = if (Wiktionary.hasTranslationSubpage(html, canonical)) {
+            page("$canonical/translations")?.selectFirst("text")?.wholeText()?.let {
+                TranslationPage(it, "Wiktionary translations")
+            }
+        } else null
+        return Wiktionary.parse(html, "Wiktionary", term, canonical, supplement)
     }
 
     @Test fun linksHireSensesWithinTheirCategoryAndRejectsUncheckedTranslations() {
@@ -66,10 +98,11 @@ class WiktionaryTest {
         )
 
         assertEquals(4, parsed.size)
-        assertEquals(listOf("contratar", "alquilar"), parsed.take(2).map { it.spanish.single() })
-        assertEquals(listOf("We hired an engineer."), parsed[0].examples)
-        assertEquals(listOf("They hired a car."), parsed[1].examples)
-        assertEquals(listOf("rent"), parsed[1].synonymOptions)
+        val job = parsed.single { "contratar" in it.spanish }
+        val rental = parsed.single { "alquilar" in it.spanish }
+        assertEquals(listOf("We hired an engineer."), job.examples)
+        assertEquals(listOf("They hired a car."), rental.examples)
+        assertEquals(listOf("rent"), rental.synonymOptions)
         assertTrue(parsed.last().spanish.isEmpty())
     }
 
