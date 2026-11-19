@@ -134,7 +134,7 @@ internal fun CardEditor(
     var showAllSynonyms by rememberSaveable(currentQuery, selectedKey) { mutableStateOf(false) }
     val selected = suggestions.firstOrNull { it.selectionKey() == selectedKey }
     val scope = key(id, currentQuery) { rememberCoroutineScope() }
-    val requests = remember(scope) { EditorRequests(scope) }
+    val requests = remember(scope) { EditorRequests(scope, model.guideScope) }
     // A saved card also supplies a context for manually requested translations.
     val providerSense = selected ?: original?.takeIf { it.english == currentQuery }?.let {
         Suggestion(it.definition.ifBlank { it.spanish }, it.senseCategories, it.source,
@@ -277,14 +277,14 @@ internal fun CardEditor(
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
         synonyms, senseCategories, entryCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource)),
-        usageNote, generatedExamples, ipa, ipaSource)
+        usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, ipa, ipaSource)
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
     }
     fun save(next: AfterSave) {
         focus.clearFocus()
-        model.save(draft, next, editedEntryCategories)
+        model.save(draft, next, editedEntryCategories, providers?.guide?.pending.takeIf { selected != null })
     }
 
     EnglishPronunciation(currentQuery, ipa) {
@@ -302,6 +302,34 @@ internal fun CardEditor(
             english = value
         }, Modifier.weight(1f), enabled = !busy,
             label = { Text("Palabra o expresión en inglés") }, singleLine = true)
+    }
+    val matches = localCards.filter { it.id != original?.id && currentQuery.isNotBlank() &&
+        senseText(it.english) == senseText(currentQuery) }
+    var viewingMatches by rememberSaveable(currentQuery) { mutableStateOf(false) }
+    if (matches.isNotEmpty()) {
+        val exact = selected?.let { sense -> matches.any { card ->
+            sense.definition.isNotBlank() && senseText(card.definition) == senseText(sense.definition) &&
+                card.senseCategories.equals(sense.category, true)
+        } } == true
+        val possible = selected?.let { sense -> matches.any { card ->
+            card.definition.isBlank() || sense.spanish.any { senseText(it) == senseText(card.spanish) }
+        } } == true
+        val message = when {
+            exact -> "Ya tenés esta acepción"
+            possible -> "Posible duplicado"
+            else -> "En tu biblioteca"
+        }
+        TextButton(onClick = { viewingMatches = true }, enabled = !busy) {
+            Text("$message · Ver tarjetas (${matches.size})")
+        }
+        if (viewingMatches) AlertDialog(onDismissRequest = { viewingMatches = false },
+            title = { Text("Tarjetas de $currentQuery") }, text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    for (card in matches) TextButton(onClick = { viewingMatches = false; onOpenExisting(card.id) }) {
+                        Text(card.spanish)
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { viewingMatches = false }) { Text("Cerrar") } })
     }
     if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
         Text("Significados", style = MaterialTheme.typography.titleMedium)
@@ -392,17 +420,6 @@ internal fun CardEditor(
             Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
         }
     }
-    if (selected != null && original == null && selected.definition.isNotBlank()) {
-        val duplicate = localCards.firstOrNull {
-            it.english.equals(currentQuery, true) && senseText(it.definition) == senseText(selected.definition) &&
-                it.senseCategories.equals(selected.category, true) &&
-                selected.spanish.any { term -> senseText(it.spanish) == senseText(term) }
-        }
-        if (duplicate != null) {
-            Text("Esta acepción ya está en tu biblioteca.")
-            TextButton(onClick = { onOpenExisting(duplicate.id) }, enabled = !busy) { Text("Abrir tarjeta existente") }
-        }
-    }
     if (providerSense != null && providers != null) {
         selected?.spanish?.distinct()?.forEach { value ->
             TextButton(onClick = { applyTranslation(value, providerSense.source, explicitly = true) }, enabled = !busy) {
@@ -465,8 +482,7 @@ internal fun CardEditor(
     if (selected != null && providers != null) {
         key(currentQuery, selectedKey) {
             UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) },
-                enabled = !busy, hasNote = usageNote.isNotBlank(),
-                onSaveNote = { usageNote = it.forStorage() },
+                enabled = !busy,
                 onAddExample = { generated ->
                     if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
                         generatedExamples = (generatedExamples.lines().filter(String::isNotBlank) + generated)

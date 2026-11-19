@@ -98,6 +98,7 @@ class StudyLayoutTest {
     ) {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val showing = androidx.compose.runtime.mutableStateOf(true)
         try {
             val example = if (dark) List(10) { "Be attentive to what the speaker is implying." }.joinToString("\n")
                 else "I run when I have time."
@@ -109,7 +110,7 @@ class StudyLayoutTest {
             }
             val model = VocabularyModel(app, db)
             compose.setContent {
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                if (showing.value) CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
                     DiegoVocabCardsTheme(darkTheme = dark) {
                         VocabCardsApp(if (dark) Appearance.Dark else Appearance.Light, model) {}
                     }
@@ -117,6 +118,8 @@ class StudyLayoutTest {
             }
             actions(db)
         } finally {
+            compose.runOnIdle { showing.value = false }
+            compose.waitForIdle()
             db.close()
         }
     }

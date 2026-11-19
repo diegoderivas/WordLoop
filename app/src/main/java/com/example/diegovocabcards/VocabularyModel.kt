@@ -20,6 +20,7 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
     private val dao = database.vocabulary()
     val reviews = database.reviews()
 
+    val guideScope get() = viewModelScope
     val cards = dao.cards()
     var saving by mutableStateOf(false)
         private set
@@ -36,7 +37,7 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
 
     fun acknowledgeSave() { saved = null }
 
-    fun save(card: Card, next: AfterSave, editedEntryCategories: String?) {
+    fun save(card: Card, next: AfterSave, editedEntryCategories: String?, pendingGuide: kotlinx.coroutines.Deferred<UsageNoteResult>? = null) {
         if (saving || saved != null) return
         saving = true
         failedId = null
@@ -44,6 +45,14 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
             try {
                 dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
                     editedEntryCategories, card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource)
+                if (card.usageNote.isEmpty() && pendingGuide != null) {
+                    viewModelScope.launch {
+                        val ready = pendingGuide.await() as? UsageNoteResult.Ready ?: return@launch
+                        try { saveMissingGuide(card, ready.note) } catch (_: SQLiteException) {
+                            // The card is already saved. Its guide can be requested again from study.
+                        }
+                    }
+                }
                 saved = SavedCard(card, next)
             } catch (failure: SQLiteException) {
                 failedId = card.id

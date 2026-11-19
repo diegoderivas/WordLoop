@@ -18,7 +18,7 @@ import org.junit.Test
 class LibraryDeletionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun swipeConfirmsOnlyOneSenseAndFailureAllowsRetry() {
+    @Test fun swipeDeletesOnlyOneSenseAndFailureAllowsRetry() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
         try {
@@ -35,27 +35,21 @@ class LibraryDeletionTest {
             compose.setContent { VocabCardsApp(Appearance.Light, model) {} }
             compose.onNodeWithText("Biblioteca").performClick()
             compose.onNodeWithContentDescription("Borrar acepción").assertDoesNotExist()
-            compose.onNodeWithText("despedir").performTouchInput { swipeRight() }
+            compose.onNodeWithText("despedir").performTouchInput { swipeLeft() }
             val trash = compose.onNodeWithContentDescription("Borrar acepción")
             trash.assertIsDisplayed()
             captureEmulator("biblioteca-borrar-claro.png")
-            trash.performClick()
-            compose.onNodeWithText("¿Borrar esta acepción?").assertIsDisplayed()
-            compose.onNodeWithText("Cancelar").performClick()
-            compose.onNodeWithText("despedir").assertExists()
-
-            val actions = compose.onNodeWithText("despedir").fetchSemanticsNode().config[SemanticsActions.CustomActions]
-            compose.runOnIdle { check(actions.single { it.label == "Borrar acepción" }.action()) }
             db.openHelper.writableDatabase.execSQL(
                 "CREATE TEMP TRIGGER prevent_delete BEFORE DELETE ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
             )
-            compose.onNodeWithText("Borrar").performClick()
+            trash.performClick()
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("No se pudo borrar la tarjeta.", substring = true).fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(2, runBlocking { db.vocabulary().cards().first().size })
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER prevent_delete")
-            compose.onNodeWithText("Borrar").performClick()
+            val actions = compose.onNodeWithText("despedir").fetchSemanticsNode().config[SemanticsActions.CustomActions]
+            compose.runOnIdle { check(actions.single { it.label == "Borrar acepción" }.action()) }
             compose.waitUntil(5000) { compose.onAllNodesWithText("despedir").fetchSemanticsNodes().isEmpty() }
             compose.onNodeWithText("fuego").assertIsDisplayed()
             val kept = runBlocking { db.vocabulary().cards().first().single() }

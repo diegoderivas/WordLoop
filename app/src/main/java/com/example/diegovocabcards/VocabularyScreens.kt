@@ -25,13 +25,13 @@ internal fun Library(
     onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit
 ) {
     var exposedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var confirmId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var search by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     Button(onClick = onAdd) { Text("Añadir tarjeta") }
+    if (deleteFailed) Text("No se pudo borrar la tarjeta. Podés intentarlo de nuevo.", color = MaterialTheme.colorScheme.error)
     if (cards.isEmpty()) {
         Text("Todavía no hay tarjetas en tu biblioteca.")
         return
@@ -60,7 +60,22 @@ internal fun Library(
                 onEdit = { onEdit(card.id) },
                 revealed = exposedId == card.id,
                 onReveal = { exposedId = if (it) card.id else null },
-                onDelete = { deleteFailed = false; confirmId = card.id }
+                onDelete = {
+                    if (!deleting) {
+                        deleting = true
+                        deleteFailed = false
+                        scope.launch {
+                            try {
+                                onDelete(card.id)
+                                exposedId = null
+                            } catch (_: SQLiteException) {
+                                deleteFailed = true
+                            } finally {
+                                deleting = false
+                            }
+                        }
+                    }
+                }
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
@@ -73,42 +88,7 @@ internal fun Library(
             }
         }
     }
-    cards.firstOrNull { it.id == confirmId }?.let { card ->
-        val close = { if (!deleting) confirmId = null }
-        AlertDialog(
-            onDismissRequest = close,
-            title = { Text("¿Borrar esta acepción?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(card.english, style = MaterialTheme.typography.titleMedium)
-                    Text(card.spanish)
-                    Text("Se borrará también su progreso de repaso.")
-                    if (deleteFailed) {
-                        Text("No se pudo borrar la tarjeta. Podés intentarlo de nuevo.",
-                            color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = !deleting, onClick = {
-                    deleting = true
-                    deleteFailed = false
-                    scope.launch {
-                        try {
-                            onDelete(card.id)
-                            confirmId = null
-                            exposedId = null
-                        } catch (_: SQLiteException) {
-                            deleteFailed = true
-                        } finally {
-                            deleting = false
-                        }
-                    }
-                }) { Text("Borrar", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(enabled = !deleting, onClick = close) { Text("Cancelar") } }
-        )
-    }
+
 }
 
 @Composable

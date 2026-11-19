@@ -32,16 +32,16 @@ internal fun SwipeCardActions(
     val open by rememberUpdatedState(revealed)
     val reveal by rememberUpdatedState(onReveal)
     var draggingOffset by remember { mutableStateOf<Float?>(null) }
-    val offset = draggingOffset ?: if (revealed) width else 0f
+    val offset = draggingOffset ?: if (revealed) -width else 0f
     Box(Modifier.fillMaxWidth().clipToBounds()) {
-        if (offset > 0f) {
+        if (offset < 0f) {
             Surface(
                 modifier = Modifier.matchParentSize(),
                 shape = CardDefaults.outlinedShape,
                 color = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError
             ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
                     Box(Modifier.width(actionWidth).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         IconButton(enabled = revealed && draggingOffset == null, onClick = onDelete) {
                             Icon(painterResource(R.drawable.delete_sense), "Borrar acepción")
@@ -56,15 +56,15 @@ internal fun SwipeCardActions(
                 .offset { IntOffset(offset.roundToInt(), 0) }
                 .pointerInput(card.id, width) {
                     detectHorizontalDragGestures(
-                        onDragStart = { draggingOffset = if (open) width else 0f },
+                        onDragStart = { draggingOffset = if (open) -width else 0f },
                         onDragEnd = {
-                            reveal((draggingOffset ?: 0f) >= width / 2)
+                            reveal((draggingOffset ?: 0f) <= -width / 2)
                             draggingOffset = null
                         },
                         onDragCancel = { draggingOffset = null },
                         onHorizontalDrag = { change, dx ->
                             change.consume()
-                            draggingOffset = ((draggingOffset ?: 0f) + dx).coerceIn(0f, width)
+                            draggingOffset = ((draggingOffset ?: 0f) + dx).coerceIn(-width, 0f)
                         }
                     )
                 }

@@ -6,7 +6,8 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.sync.Mutex
 
 internal class EditorRequest<T : Any>(private val scope: CoroutineScope) {
@@ -15,18 +16,23 @@ internal class EditorRequest<T : Any>(private val scope: CoroutineScope) {
     var loading by mutableStateOf(false)
         private set
 
+    var pending: Deferred<T>? = null
+        private set
+
     fun start(retry: Boolean = false, onFailure: T, fetch: suspend () -> T) {
         if (loading || (!retry && result != null)) return
         loading = true
-        scope.launch {
+        pending = scope.async {
             try {
                 val value = fetch()
                 ensureActive()
                 result = value
+                value
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 result = onFailure
+                onFailure
             } finally {
                 loading = false
             }
@@ -34,17 +40,17 @@ internal class EditorRequest<T : Any>(private val scope: CoroutineScope) {
     }
 }
 
-internal class EditorSenseRequests(scope: CoroutineScope) {
+internal class EditorSenseRequests(scope: CoroutineScope, guideScope: CoroutineScope) {
     val google = EditorRequest<List<String>>(scope)
     val translation = EditorRequest<List<String>>(scope)
     val synonyms = EditorRequest<List<String>>(scope)
-    val guide = EditorRequest<UsageNoteResult>(scope)
+    val guide = EditorRequest<UsageNoteResult>(guideScope)
 }
 
-internal class EditorRequests(private val scope: CoroutineScope) {
+internal class EditorRequests(private val scope: CoroutineScope, private val guideScope: CoroutineScope = scope) {
     private val senses = mutableMapOf<Suggestion, EditorSenseRequests>()
     val nano = Mutex()
 
     fun forSense(sense: Suggestion): EditorSenseRequests =
-        senses.getOrPut(sense) { EditorSenseRequests(scope) }
+        senses.getOrPut(sense) { EditorSenseRequests(scope, guideScope) }
 }

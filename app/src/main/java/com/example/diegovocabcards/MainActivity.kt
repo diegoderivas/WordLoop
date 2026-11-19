@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(Appearance.fromKey(preferences.getString("theme", null)))
             }
             var reviewSettings by remember { mutableStateOf(reviewPreferences.readReviewSettings()) }
+            var automatic by remember { mutableStateOf(reviewPreferences.getBoolean("automatic_voice", true)) }
             val dark = mode.isDark(isSystemInDarkTheme())
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -34,7 +35,10 @@ class MainActivity : ComponentActivity() {
             }
             DiegoVocabCardsTheme(darkTheme = dark) {
                 ProvideAndroidPronunciation(lifecycle) {
-                    VocabCardsApp(mode, vocabulary, reviewSettings, onReviewSettingsChange = {
+                    VocabCardsApp(mode, vocabulary, reviewSettings, automaticSpeech = automatic, onAutomaticSpeech = {
+                        automatic = it
+                        reviewPreferences.edit().putBoolean("automatic_voice", it).apply()
+                    }, onReviewSettingsChange = {
                         reviewPreferences.writeReviewSettings(it)
                         reviewSettings = it
                     }) { selected ->

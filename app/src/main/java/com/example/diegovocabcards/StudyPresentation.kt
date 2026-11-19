@@ -5,7 +5,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -24,6 +25,14 @@ internal fun StudyPresentation(
 ) {
     val player = LocalPronunciationPlayer.current
     DisposableEffect(player, card.id) { onDispose { player?.stop() } }
+    val automatic = LocalAutomaticSpeech.current
+    var pronounced by rememberSaveable(card.id, spanishFirst) { mutableStateOf(false) }
+    LaunchedEffect(player, automatic, spanishFirst, revealed) {
+        if (automatic && player != null && !pronounced && (!spanishFirst || revealed)) {
+            pronounced = true
+            player.speak(card.english)
+        }
+    }
     if (revealed) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),

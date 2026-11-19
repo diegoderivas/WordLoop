@@ -22,6 +22,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.review.ReviewSettings
 
+internal val LocalAutomaticSpeech = compositionLocalOf { true }
+
 private enum class Screen(val title: String) {
     Home("Inicio"), Library("Biblioteca"), Add("Añadir tarjeta"),
     Review("Repasar"), Study("Repasar"), Manual("Práctica manual"), Settings("Configuración"), ReviewOptions("Ajustes de repaso"), Edit("Editar tarjeta")
@@ -38,6 +40,8 @@ internal fun VocabCardsApp(
     onReviewSettingsChange: (ReviewSettings) -> Unit = {},
     clock: Clock = Clock.systemUTC(),
     guideGenerator: UsageNoteGenerator = NanoUsageNotes,
+    automaticSpeech: Boolean = true,
+    onAutomaticSpeech: (Boolean) -> Unit = {},
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
@@ -114,6 +118,7 @@ internal fun VocabCardsApp(
         }
     }
 
+    CompositionLocalProvider(LocalAutomaticSpeech provides automaticSpeech) {
     Scaffold(
         topBar = {
             Surface(color = MaterialTheme.colorScheme.surface) {
@@ -151,7 +156,7 @@ internal fun VocabCardsApp(
             }
         }
     ) { insets ->
-        key(screen, draftNumber) {
+        key(screen, draftNumber, if (screen == Screen.Edit) editId else null) {
             val scroll = rememberScrollState()
             Column(
                 Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
@@ -175,12 +180,13 @@ internal fun VocabCardsApp(
                     Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
                         onEdit = ::editCard, onDelete = model::deleteSense)
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
-                        onOpenExisting = ::editCard) {}
+                        onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
                         TextButton(onClick = { showProgress = true }) { Text("Progreso de repaso") }
                         if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
                         CardEditor(original, original.english, original.tags, knownTags, model,
+                            onOpenExisting = { editId = it },
                             fromStudy = editOrigin == Screen.Study || editOrigin == Screen.Manual) {
                             newDraft(it.english, it.tags, Screen.Library)
                         }
@@ -212,6 +218,10 @@ internal fun VocabCardsApp(
                     }
                     Screen.Settings -> {
                         OutlinedButton(onClick = { screen = Screen.ReviewOptions }) { Text("Ajustes de repaso") }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Pronunciación automática", Modifier.weight(1f))
+                            Switch(automaticSpeech, onCheckedChange = onAutomaticSpeech)
+                        }
                         AppearanceOptions(mode, onModeChange)
                     }
                     Screen.ReviewOptions -> ReviewOptions(reviewSettings) {
@@ -221,6 +231,7 @@ internal fun VocabCardsApp(
                 }
             }
         }
+    }
     }
 }
 

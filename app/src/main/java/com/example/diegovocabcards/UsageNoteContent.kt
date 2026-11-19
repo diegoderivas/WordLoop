@@ -18,23 +18,18 @@ internal fun UsageNoteOffer(
     request: EditorRequest<UsageNoteResult>,
     onRequest: (Boolean) -> Unit,
     enabled: Boolean,
-    hasNote: Boolean,
-    onSaveNote: (UsageNote) -> Unit,
     onAddExample: (String) -> Unit
 ) {
-    var hidden by remember(request.result) { mutableStateOf(false) }
-    fun start(download: Boolean = false) {
-        hidden = false
-        onRequest(download)
-    }
-
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) { Text("Guía de uso") }
     if (request.loading) {
         Text("Preparando la guía de uso…", style = MaterialTheme.typography.bodySmall)
         return
     }
-    val result = request.result.takeUnless { hidden }
-    when (val details = result) {
-        null -> TextButton(onClick = { if (hidden) hidden = false else start() }, enabled = enabled) { Text("Entender el uso") }
+    if (!expanded) return
+    fun start(download: Boolean = false) = onRequest(download)
+    when (val details = request.result) {
+        null -> TextButton(onClick = { start() }, enabled = enabled) { Text("Entender el uso") }
         UsageNoteResult.Downloadable -> {
             Text("Gemini Nano está listo para descargar. Usá Wi-Fi si querés evitar el consumo de datos móviles.")
             TextButton(onClick = { start(download = true) }, enabled = enabled) { Text("Descargar modelo") }
@@ -66,21 +61,14 @@ internal fun UsageNoteOffer(
                     note.examples.forEachIndexed { index, example ->
                         Text(example)
                         PronunciationButton(example, "Escuchar ejemplo ${index + 1}")
-                        TextButton(onClick = { onAddExample(example); hidden = true }, enabled = enabled) {
+                        TextButton(onClick = { onAddExample(example) }, enabled = enabled) {
                             Text("Añadir solo el ejemplo ${index + 1}")
                         }
                     }
-                    TextButton(onClick = { onSaveNote(note); hidden = true }, enabled = enabled) {
-                        Text(if (hasNote) "Reemplazar nota" else "Guardar nota")
-                    }
                     TextButton(onClick = { start() }, enabled = enabled) { Text("Regenerar nota") }
-                    TextButton(onClick = { hidden = true }) { Text("Seguir sin usarla") }
                 }
             }
         }
-    }
-    if (result != null && result !is UsageNoteResult.Ready) {
-        TextButton(onClick = { hidden = true }) { Text("Cerrar nota") }
     }
 }
 
@@ -92,7 +80,7 @@ internal fun SavedUsageContent(
     onRemoveExample: ((String) -> Unit)? = null
 ) {
     if (note.isBlank() && examples.isBlank()) return
-    var showNote by rememberSaveable(note) { mutableStateOf(onRemoveNote != null) }
+    var showNote by rememberSaveable(note) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (examples.isNotBlank()) {
             Text("Ejemplos de uso · $GENERATED_WITH_NANO", style = MaterialTheme.typography.labelMedium)

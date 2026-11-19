@@ -54,21 +54,22 @@ class UsageNoteEditorTest {
             tap(flight.definition)
             compose.onNodeWithText("Ejemplo en inglés (opcional)").performScrollTo()
                 .performTextInput("The plane took off yesterday.")
+            tap("Guía de uso")
             waitFor("Descargar modelo")
             tap("Descargar modelo")
             waitFor(note.meaning)
-            tap("Seguir sin usarla")
+            tap("Guía de uso")
             compose.onNodeWithText(note.meaning).assertDoesNotExist()
-            tap("Entender el uso")
+            tap("Guía de uso")
             waitFor(note.meaning)
             tap("Añadir solo el ejemplo 3")
+            tap("Guía de uso")
             compose.onNodeWithText(note.examples[2]).assertExists()
             compose.onNodeWithText("Ejemplo en inglés (opcional)").assertTextContains("The plane took off yesterday.")
-            tap("Entender el uso")
+            tap("Guía de uso")
             waitFor(note.meaning)
             compose.onNodeWithText(note.meaning).performScrollTo().assertIsDisplayed()
             captureEmulator("guia-de-uso-claro.png")
-            tap("Guardar nota")
             tap("Guardar")
             compose.waitUntil(5000) { model.saved != null }
             db.close()
@@ -156,6 +157,7 @@ class UsageNoteEditorTest {
             releaseRemoval.complete(Unit)
             waitFor(work.definition)
             tap(work.definition)
+            tap("Guía de uso")
             waitFor("Gemini Nano no está disponible", substring = true)
             compose.onNodeWithText("Late result for removing clothes.").assertDoesNotExist()
             tap("Guardar")
@@ -199,6 +201,8 @@ class UsageNoteEditorTest {
             }
             waitFor(ruefully.definition)
             tap(ruefully.definition)
+            tap("Guía de uso")
+            tap("Ver nota de uso")
             waitFor("Reintentar nota")
             compose.onNodeWithText(legacy).assertExists()
             tap("Reintentar nota")
@@ -206,8 +210,8 @@ class UsageNoteEditorTest {
             compose.onNodeWithText("Nuance").assertDoesNotExist()
             compose.onNodeWithText("They laughed ruefully when the repair failed again.").assertExists()
             tap("Regenerar nota")
-            waitFor("Reemplazar nota")
-            tap("Seguir sin usarla")
+            waitFor("Regenerar nota")
+            tap("Guía de uso")
             tap("Guardar")
             compose.waitUntil(5000) { model.saved != null }
             val card = runBlocking { db.vocabulary().cards().first().single() }
@@ -217,6 +221,41 @@ class UsageNoteEditorTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test fun guideFinishesAfterSavingAndStartingTheNextDraft() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val release = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        try {
+            val model = VocabularyModel(app, db)
+            compose.setContent {
+                val saved = model.saved
+                androidx.compose.runtime.key(saved?.card?.id) {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        CardEditor(null, if (saved == null) "take off" else "", emptyList(), emptyList(), model,
+                            lookup = { listOf(flight) }, nanoOptions = { _, _, _ -> emptyList() },
+                            usageNotes = { _, _, _ ->
+                                started.complete(Unit)
+                                release.await()
+                                UsageNoteResult.Ready(note)
+                            }) {}
+                    }
+                }
+            }
+            waitFor(flight.definition)
+            tap(flight.definition)
+            compose.waitUntil { started.isCompleted }
+            tap("Guardar y añadir otra")
+            compose.waitUntil { model.saved?.next == AfterSave.AnotherCard }
+            compose.onNodeWithText("Palabra o expresión en inglés").assertTextContains("")
+            release.complete(Unit)
+            compose.waitUntil(5000) {
+                runBlocking { db.vocabulary().cards().first().singleOrNull()?.usageNote == note.forStorage() }
+            }
+            compose.onNodeWithText(note.meaning).assertDoesNotExist()
+        } finally { release.complete(Unit); db.close() }
     }
 
     private fun showEditor(
