@@ -32,6 +32,8 @@ internal class VocabularyModel(app: Application, database: VocabularyDatabase) :
         dao.saveMissingGuide(card.id, card.english, card.spanish, card.definition, card.senseCategories,
             card.example, card.generatedExamples, note.forStorage()) == 1
 
+    suspend fun deleteSense(id: String) = dao.deleteSense(id)
+
     fun acknowledgeSave() { saved = null }
 
     fun save(card: Card, next: AfterSave, editedEntryCategories: String?) {

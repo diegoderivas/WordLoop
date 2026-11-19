@@ -89,6 +89,15 @@ internal abstract class VocabularyDao {
     @Query("DELETE FROM Entry WHERE NOT EXISTS (SELECT 1 FROM Sense WHERE Sense.entryId = Entry.entryId)")
     protected abstract suspend fun removeUnusedEntries()
 
+    @Query("DELETE FROM Sense WHERE id = :id")
+    protected abstract suspend fun removeSense(id: String)
+
+    @Transaction
+    open suspend fun deleteSense(id: String) {
+        removeSense(id)
+        removeUnusedEntries()
+    }
+
     @Query("UPDATE Entry SET entryCategories = :categories WHERE entryId = :id")
     protected abstract suspend fun categories(id: Long, categories: String)
 

@@ -172,7 +172,8 @@ internal fun VocabCardsApp(
                             Text("Añadir tarjeta")
                         }
                     }
-                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) }, onEdit = ::editCard)
+                    Screen.Library -> Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
+                        onEdit = ::editCard, onDelete = model::deleteSense)
                     Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
                         onOpenExisting = ::editCard) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->

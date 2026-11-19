@@ -1,6 +1,8 @@
 package com.example.diegovocabcards
 
+import android.database.sqlite.SQLiteException
 import androidx.compose.foundation.layout.*
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -18,7 +20,15 @@ import com.example.diegovocabcards.data.Card
 
 
 @Composable
-internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: String?, onAdd: () -> Unit, onEdit: (String) -> Unit) {
+internal fun Library(
+    cards: List<Card>, knownTags: List<String>, highlighted: String?,
+    onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit
+) {
+    var exposedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var confirmId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteFailed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var search by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     Button(onClick = onAdd) { Text("Añadir tarjeta") }
@@ -45,7 +55,13 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
     if (visible.isEmpty()) Text("No hay coincidencias.")
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(visible, key = { it.id }) { card ->
-            OutlinedCard(onClick = { onEdit(card.id) }, modifier = Modifier.fillMaxWidth()) {
+            SwipeCardActions(
+                card = card,
+                onEdit = { onEdit(card.id) },
+                revealed = exposedId == card.id,
+                onReveal = { exposedId = if (it) card.id else null },
+                onDelete = { deleteFailed = false; confirmId = card.id }
+            ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
                     TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
@@ -56,6 +72,42 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
                 }
             }
         }
+    }
+    cards.firstOrNull { it.id == confirmId }?.let { card ->
+        val close = { if (!deleting) confirmId = null }
+        AlertDialog(
+            onDismissRequest = close,
+            title = { Text("¿Borrar esta acepción?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(card.english, style = MaterialTheme.typography.titleMedium)
+                    Text(card.spanish)
+                    Text("Se borrará también su progreso de repaso.")
+                    if (deleteFailed) {
+                        Text("No se pudo borrar la tarjeta. Podés intentarlo de nuevo.",
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !deleting, onClick = {
+                    deleting = true
+                    deleteFailed = false
+                    scope.launch {
+                        try {
+                            onDelete(card.id)
+                            confirmId = null
+                            exposedId = null
+                        } catch (_: SQLiteException) {
+                            deleteFailed = true
+                        } finally {
+                            deleting = false
+                        }
+                    }
+                }) { Text("Borrar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(enabled = !deleting, onClick = close) { Text("Cancelar") } }
+        )
     }
 }
 
