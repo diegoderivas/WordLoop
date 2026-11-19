@@ -51,10 +51,15 @@ class SuggestionsTest {
             compose.onNodeWithText("Payment").assertDoesNotExist()
             compose.onNodeWithText("Ver más significados").assertExists()
             tap(work.definition)
-            tap("Detalles opcionales")
-            tap("Añadir ejemplo sugerido")
+            compose.onNodeWithText("Elegí un ejemplo").assertExists()
             compose.onNodeWithText("We hired more staff.").performClick()
-            compose.onNodeWithText("They hired a technician.\nWe hired more staff.").assertExists()
+            compose.onNodeWithText("We hired more staff.").assertExists()
+            compose.onNodeWithText("employ").performScrollTo().assertIsSelected().performClick().assertIsNotSelected()
+            compose.onNodeWithText("employ").performClick().assertIsSelected()
+            compose.onNodeWithText("Categoría gramatical").assertExists()
+            tap("Elegir ejemplo")
+            compose.onNodeWithText("Continuar sin ejemplo").performClick()
+            compose.onNodeWithText("We hired more staff.").assertDoesNotExist()
             tap(rent.definition)
             compose.onNodeWithText("They hired a van.").assertExists()
             compose.onNodeWithText("employ").assertDoesNotExist()
@@ -72,6 +77,55 @@ class SuggestionsTest {
             assertEquals("sin conexión", saved.spanish)
             assertEquals("", saved.definition)
             assertEquals("", saved.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test fun lateTranslationFromAnotherSenseCannotReplaceTheCurrentProposal() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        try {
+            val model = VocabularyModel(app, db)
+            val flight = Suggestion("To leave the ground.", "verb", "dictionary")
+            val breakTime = Suggestion("To take a break from work.", "verb", "dictionary")
+            val removal = Suggestion("To remove.", "verb", "dictionary", listOf("quitarse"))
+            val firstStarted = CompletableDeferred<Unit>()
+            val firstResult = CompletableDeferred<String>()
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(null, "take off", emptyList(), emptyList(), model,
+                        lookup = { listOf(flight, breakTime, removal) },
+                        translate = { _, meaning ->
+                            if (meaning == flight) withContext(NonCancellable) {
+                                firstStarted.complete(Unit)
+                                firstResult.await()
+                            } else "tomarse un descanso"
+                        }
+                    ) {}
+                }
+            }
+            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            compose.waitUntil(5000) { compose.onAllNodesWithText(removal.definition).fetchSemanticsNodes().isNotEmpty() }
+            tap(removal.definition)
+            compose.onNodeWithText("Traducir con Google").assertDoesNotExist()
+            tap(flight.definition)
+            tap("Traducir con Google")
+            compose.waitUntil(5000) { firstStarted.isCompleted }
+            tap(breakTime.definition)
+            tap("Traducir con Google")
+            firstResult.complete("despegar")
+            compose.waitUntil(5000) {
+                compose.onAllNodesWithText("tomarse un descanso").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("despegar").assertDoesNotExist()
+            tap("Usar traducción")
+            tap("Guardar")
+            compose.waitUntil(5000) { model.saved != null }
+            val saved = runBlocking { db.vocabulary().cards().first().single() }
+            assertEquals("tomarse un descanso", saved.spanish)
+            assertEquals(breakTime.definition, saved.definition)
+            assertTrue(GOOGLE_TRANSLATION in saved.source)
         } finally {
             db.close()
         }

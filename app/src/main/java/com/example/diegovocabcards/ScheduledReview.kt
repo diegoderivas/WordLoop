@@ -170,9 +170,11 @@ private fun StudyQuestion(
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineMedium)
+            if (spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
             if (at != null) {
                 HorizontalDivider()
                 Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
+                if (!spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
                 if (card.example.isNotBlank()) Text(card.example)
             }
         }

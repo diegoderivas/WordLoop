@@ -52,6 +52,7 @@ internal fun mergeMeaningFields(
 internal fun CardEditor(
     original: Card?, initialEnglish: String, initialTags: List<String>, knownTags: List<String>,
     model: VocabularyModel, lookup: suspend (String) -> List<Suggestion> = Dictionary::lookup,
+    translate: suspend (String, Suggestion) -> String? = LocalSenseTranslation::suggest,
     onAnotherSense: (Card) -> Unit
 ) {
     val id = rememberSaveable { original?.id ?: UUID.randomUUID().toString() }
@@ -59,6 +60,8 @@ internal fun CardEditor(
     var spanish by rememberSaveable { mutableStateOf(original?.spanish.orEmpty()) }
     var example by rememberSaveable { mutableStateOf(original?.example.orEmpty()) }
     var details by rememberSaveable { mutableStateOf(false) }
+    var advanced by rememberSaveable { mutableStateOf(false) }
+    var editingCategory by rememberSaveable { mutableStateOf(false) }
     var definition by rememberSaveable { mutableStateOf(original?.definition.orEmpty()) }
     var synonyms by rememberSaveable { mutableStateOf(original?.synonyms.orEmpty()) }
     var senseCategories by rememberSaveable { mutableStateOf(original?.senseCategories.orEmpty()) }
@@ -69,6 +72,7 @@ internal fun CardEditor(
     var automaticFields by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var retainedSource by rememberSaveable { mutableStateOf(original?.source.orEmpty()) }
     var activeSource by rememberSaveable { mutableStateOf("") }
+    var translationSource by rememberSaveable { mutableStateOf("") }
     val currentValues = mapOf(
         MeaningField.Spanish to spanish, MeaningField.Definition to definition,
         MeaningField.Categories to senseCategories, MeaningField.Example to example,
@@ -89,6 +93,10 @@ internal fun CardEditor(
         if (field in automatic && value.isNotBlank()) {
             retainedSource = combineSources(retainedSource, activeSource)
         }
+        if (field == MeaningField.Spanish && translationSource.isNotEmpty()) {
+            if (value.isNotBlank()) retainedSource = combineSources(retainedSource, translationSource)
+            translationSource = ""
+        }
         manualFields = ArrayList((manualFields + field.name).distinct())
         automaticFields = ArrayList(automaticFields - field.name)
         setValue(field, value)
@@ -101,6 +109,8 @@ internal fun CardEditor(
     var selectedKey by rememberSaveable(currentQuery) { mutableStateOf<String?>(null) }
     var more by rememberSaveable(currentQuery) { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
+    var choosingExample by rememberSaveable(currentQuery) { mutableStateOf(false) }
+    var showAllSynonyms by rememberSaveable(currentQuery, selectedKey) { mutableStateOf(false) }
     val selected = suggestions.firstOrNull { it.selectionKey() == selectedKey }
     LaunchedEffect(currentQuery) {
         if (currentQuery.length >= 2) {
@@ -129,22 +139,31 @@ internal fun CardEditor(
         automaticFields = ArrayList(applied.map { it.name })
         manualFields = ArrayList(manualFields - automaticFields.toSet())
         activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
+        translationSource = ""
         selectedKey = value.selectionKey()
+        choosingExample = value.examples.distinct().size > 1 &&
+            (MeaningField.Example in automatic || MeaningField.Example in applied)
+        showAllSynonyms = false
         proposed = null
     }
-    fun addAlternative(field: MeaningField, value: String, separator: String) {
-        val existing = currentValues.getValue(field)
-        val parts = if (field == MeaningField.Example) existing.lines() else existing.split(',')
-        val values = parts.map { it.trim() }.filter { it.isNotEmpty() }
-        if (value in values) return
-        val updated = (values + value).joinToString(separator)
-        if (field in automatic || (existing.isBlank() && field !in manual)) {
+    fun selectExample(value: String) {
+        setValue(MeaningField.Example, value)
+        automaticFields = ArrayList((automaticFields + MeaningField.Example.name).distinct())
+        manualFields = ArrayList(manualFields - MeaningField.Example.name)
+        if (value.isNotBlank()) activeSource = selected?.source.orEmpty()
+        choosingExample = false
+    }
+    fun toggleSynonym(value: String) {
+        val field = MeaningField.Synonyms
+        val terms = commaSeparatedValues(synonyms)
+        val updated = (if (value in terms) terms - value else terms + value).joinToString(", ")
+        if (field in automatic || (synonyms.isBlank() && field !in manual)) {
             setValue(field, updated)
             automaticFields = ArrayList((automaticFields + field.name).distinct())
             activeSource = selected?.source.orEmpty()
         } else {
             editValue(field, updated)
-            retainedSource = combineSources(retainedSource, selected?.source.orEmpty())
+            if (value !in terms) retainedSource = combineSources(retainedSource, selected?.source.orEmpty())
         }
     }
     var tags by rememberSaveable { mutableStateOf(ArrayList(original?.tags ?: initialTags)) }
@@ -155,7 +174,7 @@ internal fun CardEditor(
     val valid = english.isNotBlank() && spanish.isNotBlank() && !busy
     val effectiveTags = (tags + pending.split(',').map { it.trim() }.filter { it.isNotEmpty() })
         .distinctBy { it.lowercase() }
-    val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition, synonyms, senseCategories, entryCategories, storedAttribution(combineSources(retainedSource, activeSource)))
+    val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition, synonyms, senseCategories, entryCategories, storedAttribution(combineSources(retainedSource, activeSource, translationSource)))
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -170,6 +189,7 @@ internal fun CardEditor(
             automatic.forEach { setValue(it, "") }
             automaticFields = arrayListOf()
             activeSource = ""
+            translationSource = ""
         }
         english = value
     }, Modifier.fillMaxWidth(), enabled = !busy,
@@ -226,7 +246,8 @@ internal fun CardEditor(
                 confirmButton = { TextButton(onClick = { more = false }) { Text("Cerrar") } })
         }
     }
-    val sources = combineSources(retainedSource, activeSource, *suggestions.map { it.source }.toTypedArray())
+    val sources = combineSources(retainedSource, activeSource, translationSource,
+        *suggestions.map { it.source }.toTypedArray())
     if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text("Fuente y licencia") }
     if (showSources && sources.isNotEmpty()) {
         val uriHandler = LocalUriHandler.current
@@ -236,42 +257,108 @@ internal fun CardEditor(
                     sources.lineSequence().filter { it.isNotBlank() }.distinct().forEach { line ->
                         if (line.startsWith("https://")) {
                             TextButton(onClick = { runCatching { uriHandler.openUri(line) } }) {
-                                Text(if ("creativecommons.org" in line) "Ver licencia" else "Ver entrada original")
+                                Text(when {
+                                    "creativecommons.org" in line -> "Ver licencia"
+                                    "developers.google.com/ml-kit" in line -> "Acerca de la traducción"
+                                    else -> "Ver entrada original"
+                                })
                             }
                         } else Text(line)
+                    }
+                    if (GOOGLE_TRANSLATION in sources) {
+                        Text("Esta app puede contener traducciones de Google. Google excluye toda garantía " +
+                            "expresa o implícita sobre ellas, incluidas las de precisión, fiabilidad, comerciabilidad, " +
+                            "idoneidad para un fin particular y ausencia de infracción.")
                     }
                 }
             }, confirmButton = { TextButton(onClick = { showSources = false }) { Text("Cerrar") } })
     }
     OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Traducción al español") }, singleLine = true)
+    if (spanish.isNotBlank() && (translationSource.isNotEmpty() || GOOGLE_TRANSLATION in retainedSource)) {
+        TranslationAttribution()
+    }
+    if (selected != null && selected.spanish.isEmpty() && spanish.isBlank() && senseTranslationInput(currentQuery, selected) != null) {
+        key(currentQuery, selectedKey) {
+            SenseTranslationOffer(currentQuery, selected, enabled = !busy,
+                translate = { term, sense ->
+                    val result = translate(term, sense)
+                    result?.takeUnless { candidate ->
+                        suggestions.any { other ->
+                            other != sense && other.spanish.any { senseText(it) == senseText(candidate) }
+                        }
+                    }
+                },
+                onUse = { candidate ->
+                    spanish = candidate
+                    automaticFields = ArrayList((automaticFields + MeaningField.Spanish.name).distinct())
+                    manualFields = ArrayList(manualFields - MeaningField.Spanish.name)
+                    translationSource = GOOGLE_TRANSLATION
+                })
+        }
+    }
+    val examples = selected?.examples.orEmpty().filter(String::isNotBlank).distinct()
+    if (examples.isNotEmpty()) {
+        SupportingSenseExample(examples, example, enabled = !busy,
+            onChoose = { choosingExample = true },
+            onUse = ::selectExample,
+            onRemove = {
+                if (MeaningField.Example in automatic) selectExample("")
+                else editValue(MeaningField.Example, "")
+            })
+        if (choosingExample && examples.size > 1) {
+            ExamplePicker(examples, example, onClose = { choosingExample = false }, onSelect = ::selectExample)
+        }
+    }
     OutlinedTextField(example, { editValue(MeaningField.Example, it) }, Modifier.fillMaxWidth(), enabled = !busy,
         label = { Text("Ejemplo en inglés (opcional)") })
+
+    if (selected != null || senseCategories.isNotBlank() || details) {
+        Text("Categoría gramatical", style = MaterialTheme.typography.titleSmall)
+        if (editingCategory) {
+            OutlinedTextField(senseCategories, { editValue(MeaningField.Categories, it) }, Modifier.fillMaxWidth(),
+                enabled = !busy, label = { Text("Categorías de la acepción") })
+            TextButton(onClick = { editingCategory = false }) { Text("Listo") }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val labels = commaSeparatedValues(senseCategories).map { categoryLabel(it.lowercase()) }
+                Text(labels.joinToString(" · ").ifBlank { "Sin categoría" }, Modifier.weight(1f))
+                TextButton(onClick = { editingCategory = true }, enabled = !busy) { Text("Editar categoría") }
+            }
+        }
+    }
+
+    val synonymOptions = selected?.synonymOptions.orEmpty().filter(String::isNotBlank).distinct()
+    if (synonymOptions.isNotEmpty()) {
+        Text("Sinónimos en inglés", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val terms = commaSeparatedValues(synonyms)
+            val visible = if (showAllSynonyms) synonymOptions else synonymOptions.take(6)
+            visible.forEach { term ->
+                FilterChip(selected = term in terms, enabled = !busy, onClick = { toggleSynonym(term) },
+                    label = { Text(term) })
+            }
+        }
+        if (synonymOptions.size > 6) {
+            TextButton(onClick = { showAllSynonyms = !showAllSynonyms }) {
+                Text(if (showAllSynonyms) "Ver menos sinónimos" else "Ver más sinónimos")
+            }
+        }
+    }
     TextButton(onClick = { details = !details }) { Text(if (details) "Ocultar detalles" else "Detalles opcionales") }
     if (details) {
         OutlinedTextField(definition, { editValue(MeaningField.Definition, it) }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("Definición en inglés") })
         OutlinedTextField(synonyms, { editValue(MeaningField.Synonyms, it) }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("Sinónimos (separados por comas)") })
-        selected?.let { sense ->
-            val otherSynonyms = sense.synonymOptions.filter { it !in synonyms.split(',').map(String::trim) }
-            if (otherSynonyms.isNotEmpty()) {
-                TagMenu("Añadir sinónimo sugerido", otherSynonyms, enabled = !busy) {
-                    addAlternative(MeaningField.Synonyms, it, ", ")
-                }
-            }
-            val otherExamples = sense.examples.filter { it !in example.lines() }
-            if (otherExamples.isNotEmpty()) {
-                TagMenu("Añadir ejemplo sugerido", otherExamples, enabled = !busy) {
-                    addAlternative(MeaningField.Example, it, "\n")
-                }
-            }
-        }
-        OutlinedTextField(senseCategories, { editValue(MeaningField.Categories, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text("Categorías de esta acepción (separadas por comas)") })
-        OutlinedTextField(entryCategories, { editedEntryCategories = it }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text("Categorías de la expresión (compartidas)") })
         Text("Podés escribir varios ejemplos, uno por línea.")
+        TextButton(onClick = { advanced = !advanced }) {
+            Text(if (advanced) "Ocultar detalles avanzados" else "Detalles avanzados")
+        }
+        if (advanced) {
+            OutlinedTextField(entryCategories, { editedEntryCategories = it }, Modifier.fillMaxWidth(), enabled = !busy,
+                label = { Text("Categorías de la expresión (compartidas)") })
+        }
     }
     Text("Etiquetas", style = MaterialTheme.typography.titleMedium)
     if (tags.isNotEmpty()) {
@@ -364,6 +451,9 @@ private fun MeaningOption(
         }
     }
 }
+
+private fun commaSeparatedValues(value: String): List<String> =
+    value.split(',').map(String::trim).filter(String::isNotEmpty)
 
 private const val EDIT_NOTICE = "Contenido seleccionado y editable por el usuario."
 

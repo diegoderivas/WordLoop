@@ -47,6 +47,7 @@ internal fun Library(cards: List<Card>, knownTags: List<String>, highlighted: St
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
                     Text(card.spanish)
+                    if (GOOGLE_TRANSLATION in card.source) TranslationAttribution()
                     if (card.example.isNotEmpty()) Text(card.example, style = MaterialTheme.typography.bodyMedium)
                     if (card.tags.isNotEmpty()) Text(card.tags.joinToString(" · "),
                         style = MaterialTheme.typography.labelLarge)
@@ -96,8 +97,10 @@ internal fun Practice(cards: List<Card>, onAdd: () -> Unit) {
             val card = cards.first { it.id == ids[index] }
             Text("Tarjeta ${index + 1} de ${ids.size}")
             Text(if (spanishFirst) card.spanish else card.english, style = MaterialTheme.typography.headlineSmall)
+            if (spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
             if (revealed) {
                 Text(if (spanishFirst) card.english else card.spanish, style = MaterialTheme.typography.titleLarge)
+                if (!spanishFirst && GOOGLE_TRANSLATION in card.source) TranslationAttribution()
                 if (card.example.isNotEmpty()) Text(card.example)
                 Button(onClick = { revealed = false; index++ }) { Text("Siguiente") }
             } else {
