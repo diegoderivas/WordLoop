@@ -148,9 +148,15 @@ internal object Dictionary {
                     } + "\n" + license.optString("url")
                 val ipa = if (senseText(entry.optString("word")) == senseText(term)) {
                     val phonetics = entry.optJSONArray("phonetics") ?: JSONArray()
-                    (listOf(entry.optString("phonetic")) + (0 until phonetics.length()).map {
-                        phonetics.optJSONObject(it)?.optString("text").orEmpty()
-                    }).mapNotNull(::ipaTranscription).distinct().take(3).joinToString(" · ")
+                    val variants = (0 until phonetics.length()).mapNotNull { index ->
+                        val record = phonetics.optJSONObject(index) ?: return@mapNotNull null
+                        val text = ipaTranscription(record.optString("text")) ?: return@mapNotNull null
+                        val filename = record.optString("audio").substringBefore('?').substringAfterLast('/')
+                        val region = Regex("""-(uk|us)\.[a-z0-9]+$""", RegexOption.IGNORE_CASE)
+                            .find(filename)?.groupValues?.get(1).orEmpty()
+                        "$region $text".trim()
+                    }
+                    preferredIpa((variants + entry.optString("phonetic")).joinToString(" · ")).orEmpty()
                 } else ""
                 val pronunciation = ipa.takeIf(String::isNotBlank)?.let { DictionaryPronunciation(it, source) }
                 val meanings = entry.getJSONArray("meanings")

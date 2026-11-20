@@ -45,6 +45,14 @@ internal fun preferredIpa(raw: String): String? = raw.split(" · ").mapNotNull {
     priority to "/${valid.drop(1).dropLast(1)}/"
 }.minByOrNull { it.first }?.second
 
+internal const val VOICE_SAMPLE = "I'll see you tomorrow morning."
+internal const val MANUAL_IPA = "Transcripción manual"
+
+internal fun formattedIpa(value: String): String {
+    val body = value.trim().trim('/', '[', ']').trim()
+    return if (body.isEmpty()) "" else "/$body/"
+}
+
 internal enum class SpeechState { Idle, Loading, Speaking, Unavailable }
 
 internal interface PronunciationPlayer {
@@ -53,6 +61,7 @@ internal interface PronunciationPlayer {
     val voices: List<Voice> get() = emptyList()
     fun refreshVoices() {}
     fun speak(text: String)
+    fun sample(voiceName: String)
     fun stop()
 }
 
@@ -73,6 +82,7 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
         private set
     private var ready = false
     private var pending: String? = null
+    private var sampleVoice: String? = null
     private var utterance: String? = null
     private var generation = 0
     private val timeout = Runnable {
@@ -86,7 +96,15 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
     override var requestedText by mutableStateOf<String?>(null)
         private set
 
-    override fun speak(text: String) {
+    override fun speak(text: String) = start(text, null)
+
+    override fun sample(voiceName: String) {
+        stop()
+        start(VOICE_SAMPLE, voiceName)
+    }
+
+    private fun start(text: String, voiceName: String?) {
+        sampleVoice = voiceName
         val phrase = text.trim().take(TextToSpeech.getMaxSpeechInputLength())
         if (phrase.isEmpty()) return
         requestedText = text
@@ -137,6 +155,7 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
     private fun play(text: String) {
         val tts = engine ?: return
         val available = localEnglishVoices(tts.voices.orEmpty(), preferredVoice)
+            .filter { sampleVoice == null || it.name == sampleVoice }
         if (available.none { tts.voice == it || tts.setVoice(it) == TextToSpeech.SUCCESS }) {
             failInitialization()
             return
@@ -167,6 +186,7 @@ internal class AndroidPronunciation(private val context: Context) : Pronunciatio
 
     override fun stop() {
         requestedText = null
+        sampleVoice = null
         pending = null
         utterance = null
         engine?.stop()
@@ -212,7 +232,7 @@ internal fun PronunciationButton(text: String, label: String) {
 
 @Composable
 internal fun EnglishPronunciation(
-    text: String, ipa: String, content: @Composable RowScope.() -> Unit
+    text: String, ipa: String?, content: @Composable RowScope.() -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         PronunciationControl(text) { play ->
@@ -225,7 +245,11 @@ internal fun EnglishPronunciation(
                 }
             }
         }
-        preferredIpa(ipa)?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+        if (ipa != null) {
+            val transcription = preferredIpa(ipa)
+            Text(transcription ?: "Sin IPA", style = if (transcription == null) MaterialTheme.typography.bodySmall
+                else MaterialTheme.typography.titleSmall)
+        }
     }
 }
 

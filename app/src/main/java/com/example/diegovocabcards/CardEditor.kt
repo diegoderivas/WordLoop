@@ -81,8 +81,10 @@ internal fun CardEditor(
     var translationSource by rememberSaveable { mutableStateOf("") }
     var usageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
     var generatedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
-    var ipa by rememberSaveable { mutableStateOf(original?.ipa.orEmpty()) }
+    var ipa by rememberSaveable { mutableStateOf(preferredIpa(original?.ipa.orEmpty()).orEmpty()) }
     var ipaSource by rememberSaveable { mutableStateOf(original?.ipaSource.orEmpty()) }
+    var manualIpa by rememberSaveable { mutableStateOf(original?.ipaSource == MANUAL_IPA ||
+        (original?.ipaSource.isNullOrBlank() && ipa.isNotBlank())) }
     val currentValues = mapOf(
         MeaningField.Spanish to spanish, MeaningField.Definition to definition,
         MeaningField.Categories to senseCategories, MeaningField.Example to example,
@@ -227,6 +229,20 @@ internal fun CardEditor(
             }
         }
     }
+    // Older or manually created cards may never have stored pronunciation. Only prefill
+    // an exact definition/category match or a pronunciation shared by every candidate.
+    LaunchedEffect(suggestions) {
+        if (original != null && currentQuery == original.english && ipa.isBlank() && !manualIpa && selectedKey == null) {
+            val matches = suggestions.filter { senseText(it.definition) == senseText(original.definition) &&
+                it.category.equals(original.senseCategories, true) }
+            val candidates = matches.ifEmpty { suggestions }
+            val sounds = candidates.map { it.pronunciation?.let { sound -> preferredIpa(sound.ipa) } }.distinct()
+            if (sounds.size == 1 && sounds.first() != null) {
+                ipa = sounds.first().orEmpty()
+                ipaSource = candidates.first().pronunciation!!.source
+            }
+        }
+    }
     fun applySuggestion(value: Suggestion, replaceManual: Boolean = false) {
         val incoming = fieldsFrom(value)
         val merged = mergeMeaningFields(currentValues, incoming, automatic, manual, replaceManual)
@@ -241,8 +257,14 @@ internal fun CardEditor(
         if (MeaningField.Spanish in automatic || MeaningField.Spanish in applied) translationSource = ""
         if (MeaningField.Example in automatic || MeaningField.Example in applied) exampleSource = ""
         if (MeaningField.Synonyms in automatic || MeaningField.Synonyms in applied) synonymSource = ""
-        ipa = value.pronunciation?.ipa.orEmpty()
-        ipaSource = value.pronunciation?.source.orEmpty()
+        if (!manualIpa) {
+            val pronunciation = value.pronunciation
+            val savedSound = original?.takeIf { it.english == currentQuery && it.definition.isNotBlank() &&
+                senseText(it.definition) == senseText(value.definition) &&
+                it.senseCategories.equals(value.category, ignoreCase = true) }
+            ipa = preferredIpa(pronunciation?.ipa.orEmpty()) ?: preferredIpa(savedSound?.ipa.orEmpty()).orEmpty()
+            ipaSource = if (pronunciation != null) pronunciation.source else savedSound?.ipaSource.orEmpty()
+        }
         selectedKey = value.selectionKey()
         choosingExample = value.examples.distinct().size > 1 &&
             (MeaningField.Example in automatic || MeaningField.Example in applied)
@@ -278,7 +300,7 @@ internal fun CardEditor(
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
         synonyms, senseCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource)),
-        usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, ipa, ipaSource)
+        usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, formattedIpa(ipa), ipaSource)
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -289,7 +311,7 @@ internal fun CardEditor(
         model.save(draft, next, requests.retainForSave(pending))
     }
 
-    EnglishPronunciation(currentQuery, ipa) {
+    EnglishPronunciation(currentQuery, null) {
         OutlinedTextField(english, { value ->
             if (value.trim() != currentQuery) {
                 automatic.forEach { setValue(it, "") }
@@ -298,13 +320,18 @@ internal fun CardEditor(
                 if (MeaningField.Example in automatic) exampleSource = ""
                 if (MeaningField.Synonyms in automatic) synonymSource = ""
                 if (MeaningField.Spanish in automatic) translationSource = ""
-                ipa = ""
-                ipaSource = ""
+                if (!manualIpa) { ipa = ""; ipaSource = "" }
             }
             english = value
         }, Modifier.weight(1f), enabled = !busy,
             label = { Text("Palabra o expresión en inglés") }, singleLine = true)
     }
+    OutlinedTextField(ipa, { value ->
+        ipa = value
+        ipaSource = MANUAL_IPA
+        manualIpa = true
+    }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
+        label = { Text("IPA") }, placeholder = { Text("/…/") })
     val matches = localCards.filter { it.id != original?.id && currentQuery.isNotBlank() &&
         senseText(it.english) == senseText(currentQuery) }
     var viewingMatches by rememberSaveable(currentQuery) { mutableStateOf(false) }

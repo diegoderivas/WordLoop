@@ -21,6 +21,73 @@ import org.junit.Test
 class SuggestionsTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun editingLegacyCardSuggestsOnlyItsMatchingSensesPronunciation() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        try {
+            val original = runBlocking {
+                db.vocabulary().save("old", "record", "registro", "", "", definition = "An account.", senseCategories = "noun")
+                db.vocabulary().cards().first().single()
+            }
+            val noun = Suggestion("An account.", "noun", "fixture",
+                pronunciation = DictionaryPronunciation("US /ˈɹɛkɚd/ · UK /ˈɹɛkɔːd/", "fixture"))
+            val verb = Suggestion("To preserve an account.", "verb", "fixture",
+                pronunciation = DictionaryPronunciation("/ɹɪˈkɔːd/", "fixture"))
+            val model = VocabularyModel(app, db)
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(original, "", emptyList(), emptyList(), model, lookup = { listOf(verb, noun) }) {}
+                }
+            }
+            compose.waitUntil(5000) { compose.onAllNodesWithText("/ˈɹɛkɔːd/").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Guardar").performScrollTo().performClick()
+            compose.waitUntil(5000) { model.saved != null }
+            val saved = runBlocking { db.vocabulary().cards().first().single() }
+            assertEquals("fixture", saved.ipaSource)
+            assertEquals("/ˈɹɛkɔːd/", saved.ipa)
+        } finally { db.close() }
+    }
+
+    @Test fun oldCardWithoutIpaKeepsManualCorrectionWhenLookupArrives() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val lookup = CompletableDeferred<List<Suggestion>>()
+        try {
+            val original = runBlocking {
+                db.vocabulary().save("old", "fire", "fuego", "", "")
+                db.vocabulary().cards().first().single()
+            }
+            val model = VocabularyModel(app, db)
+            compose.setContent {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    CardEditor(original, "", emptyList(), emptyList(), model, lookup = { lookup.await() },
+                        translate = { _, _ -> null }, nanoOptions = { _, _, _ -> emptyList() },
+                        usageNotes = { _, _, _ -> UsageNoteResult.Unavailable }) {}
+                }
+            }
+            val ipa = compose.onNodeWithText("IPA")
+            ipa.performScrollTo().performTextInput("faɪə")
+            val meaning = Suggestion("Flames and heat.", "noun", "fixture",
+                pronunciation = DictionaryPronunciation("/faɪɹ/", "fixture"))
+            lookup.complete(listOf(meaning))
+            compose.waitUntil(5000) {
+                compose.onAllNodesWithText(meaning.definition).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(meaning.definition).performScrollTo().performClick()
+            ipa.assertTextContains("faɪə")
+            compose.onNodeWithText("Guardar").performScrollTo().performClick()
+            compose.waitUntil(5000) { model.saved != null }
+            val saved = runBlocking { db.vocabulary().cards().first().single() }
+            assertEquals(original.id, saved.id)
+            assertEquals("fuego", saved.spanish)
+            assertEquals("/faɪə/", saved.ipa)
+            assertEquals(MANUAL_IPA, saved.ipaSource)
+        } finally {
+            lookup.cancel()
+            db.close()
+        }
+    }
+
     @Test fun bothOrdersPreferGeminiAndRespectAnExplicitlyClearedTranslation() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()

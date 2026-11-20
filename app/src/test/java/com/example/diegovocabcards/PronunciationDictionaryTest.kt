@@ -35,6 +35,23 @@ class PronunciationDictionaryTest {
         assertNull(preferredIpa("unknown"))
     }
 
+    @Test fun languagePronunciationSurvivesEtymologiesAndScopedOverrideStaysLocal() {
+        val html = """
+            <h2>English</h2>
+            <h3>Pronunciation</h3><ul>
+              <li><span class="qualifier-content">US</span><span class="IPA">/fɑɹ/</span></li>
+              <li><span class="qualifier-content">UK</span><span class="IPA">/fɑː/</span></li>
+            </ul>
+            <h3>Etymology 1</h3><h4>Noun</h4><ol><li>A first sense.</li></ol>
+            <h3>Etymology 2</h3><h4>Pronunciation</h4><ul>
+              <li><span class="IPA">/fiː/</span></li></ul>
+            <h4>Verb</h4><ol><li>A second sense.</li></ol>
+            <h3>Etymology 3</h3><h4>Adjective</h4><ol><li>A third sense.</li></ol>
+        """
+        val sounds = Wiktionary.parse(html, "test", "word", "word").map { it.pronunciation?.ipa }
+        assertEquals(listOf("/fɑː/", "/fiː/", "/fɑː/"), sounds)
+    }
+
     @Test fun audioOnlyOrUnrelatedIpaDoesNotCreateATranscription() {
         val html = """
             <h2>English</h2>

@@ -40,7 +40,9 @@ class ScheduledReviewTest {
             click("Repasar en ambos sentidos")
             compose.onNodeWithText("fuego").assertIsDisplayed()
             compose.onNodeWithText("fire").assertDoesNotExist()
+            compose.onNodeWithText("Sin IPA").assertDoesNotExist()
             click("Mostrar respuesta")
+            compose.onNodeWithText("Sin IPA").assertExists()
             click("Bien")
             compose.waitUntil(5000) { compose.onAllNodesWithText("Inglés → Español · Nueva").fetchSemanticsNodes().isNotEmpty() }
             val first = runBlocking { db.reviews().latest("one", Direction.ES_EN) }

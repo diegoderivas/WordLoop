@@ -37,10 +37,23 @@ class PronunciationTest {
             val player = AndroidPronunciation(instrumentation.targetContext.applicationContext)
             try {
                 player.speak("Take off")
-                withTimeout(15_000L) {
+                suspend fun awaitSpeech() = withTimeout(15_000L) {
                     while (player.state == SpeechState.Loading || player.state == SpeechState.Speaking) delay(50L)
                     player.state
                 }
+                val initial = awaitSpeech()
+                val voices = player.voices.filter { it.locale.country in setOf("GB", "US", "AU") }
+                if (initial == SpeechState.Idle && voices.isNotEmpty()) {
+                    player.preferredVoice = voices.first().name
+                    voices.take(2).forEach { player.sample(it.name) }
+                    assertEquals(VOICE_SAMPLE, player.requestedText)
+                    assertEquals(voices.first().name, player.preferredVoice)
+                    assertEquals(SpeechState.Idle, awaitSpeech())
+                }
+                instrumentation.sendStatus(0, Bundle().apply {
+                    putString("stream", "\nOffline preview inventory: ${voices.map { it.locale.country }.distinct()}, sampled ${if (initial == SpeechState.Idle) voices.take(2).size else 0}\n")
+                })
+                initial
             } finally {
                 player.release()
             }

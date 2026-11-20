@@ -47,7 +47,9 @@ internal object Wiktionary {
         var categoryDepth = 0
         var inDefinitions = false
         var inPronunciation = false
-        val variants = mutableListOf<IpaVariant>()
+        val languageVariants = mutableListOf<IpaVariant>()
+        val scopedVariants = mutableListOf<IpaVariant>()
+        var etymologyDepth = 0
         val exactEntry = senseText(requested) == senseText(title)
         var senses = mutableListOf<Suggestion>()
         var linkedSection = false
@@ -74,19 +76,20 @@ internal object Wiktionary {
                     }
                 }
             }
+            fun matchesCategory(variant: IpaVariant): Boolean {
+                val partsOfSpeech = variant.labels.map(::senseText).filter { it in categories }
+                return partsOfSpeech.isEmpty() || category in partsOfSpeech
+            }
+            val ipa = scopedVariants.filter(::matchesCategory)
+                .ifEmpty { languageVariants.filter(::matchesCategory) }
+                .map { variant ->
+                    val labels = variant.labels.filterNot { senseText(it) in categories }.distinct()
+                    (labels + variant.text).joinToString(" ")
+                }.distinct().joinToString(" · ")
+            val sound = preferredIpa(ipa)?.let { DictionaryPronunciation(it, source) }
             results += senses.mapIndexed { index, sense ->
                 val attribution = if (index in fromSupplement) "$source\n\n${supplement!!.source}" else source
-                val ipa = variants.asSequence()
-                    .filter { variant ->
-                        val partsOfSpeech = variant.labels.map(::senseText).filter { it in categories }
-                        partsOfSpeech.isEmpty() || category in partsOfSpeech
-                    }
-                    .map { variant ->
-                        val labels = variant.labels.filterNot { senseText(it) in categories }.distinct()
-                        (labels + variant.text).joinToString(" ")
-                    }.distinct().joinToString(" · ")
-                sense.copy(spanish = spanish[index].orEmpty(), source = attribution,
-                    pronunciation = preferredIpa(ipa)?.let { DictionaryPronunciation(it, source) })
+                sense.copy(spanish = spanish[index].orEmpty(), source = attribution, pronunciation = sound)
             }
             linkedSection = false
             senses = mutableListOf()
@@ -106,7 +109,11 @@ internal object Wiktionary {
                     categoryDepth = 0
                 }
                 if (depth == 2) english = name == "english"
-                if (depth == 2 || etymologyHeading.matches(name)) variants.clear()
+                if (depth == 2) languageVariants.clear()
+                if (depth == 2 || depth <= etymologyDepth || etymologyHeading.matches(name)) {
+                    etymologyDepth = if (etymologyHeading.matches(name)) depth else 0
+                    scopedVariants.clear()
+                }
                 inPronunciation = english && exactEntry && pronunciationHeading.matches(name)
                 if (english && name in categories) {
                     category = name
@@ -121,6 +128,7 @@ internal object Wiktionary {
                     val labels = notation.closest("li")?.select(".qualifier-content, .ib-content")
                         ?.eachText().orEmpty().flatMap { it.split(',') }.map(String::trim)
                         .filter { it.isNotBlank() && it.length <= 45 }
+                    val variants = if (etymologyDepth == 0) languageVariants else scopedVariants
                     variants += IpaVariant(text, labels)
                 }
             }
