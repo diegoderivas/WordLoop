@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import java.util.UUID
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal enum class MeaningField { Spanish, Definition, Categories, Example, Synonyms }
@@ -56,6 +57,7 @@ internal fun CardEditor(
     translate: suspend (String, Suggestion) -> String? = LocalSenseTranslation::suggest,
     nanoOptions: suspend (String, Suggestion, SenseRequest) -> List<String> = ::nanoSenseOptions,
     usageNotes: UsageNoteGenerator = NanoUsageNotes,
+    ipaSuggestion: suspend (IpaContext) -> String? = ::suggestIpa,
     fromStudy: Boolean = false,
     onOpenExisting: (String) -> Unit = {},
     onAnotherSense: (Card) -> Unit
@@ -127,6 +129,7 @@ internal fun CardEditor(
     DisposableEffect(pronunciationPlayer, currentQuery) { onDispose { pronunciationPlayer?.stop() } }
     var suggestions by remember(currentQuery) { mutableStateOf(emptyList<Suggestion>()) }
     var queryState by remember(currentQuery) { mutableStateOf("") }
+    var lookupSucceeded by remember(currentQuery) { mutableStateOf<Boolean?>(null) }
     var proposed by remember(currentQuery) { mutableStateOf<Suggestion?>(null) }
     var selectedKey by rememberSaveable(currentQuery) { mutableStateOf<String?>(null) }
     var more by rememberSaveable(currentQuery) { mutableStateOf(false) }
@@ -135,7 +138,8 @@ internal fun CardEditor(
     var showAllSynonyms by rememberSaveable(currentQuery, selectedKey) { mutableStateOf(false) }
     val selected = suggestions.firstOrNull { it.selectionKey() == selectedKey }
     val scope = key(id, currentQuery) { rememberCoroutineScope() }
-    val requests = remember(scope) { EditorRequests(scope, model.guideScope) }
+    val nanoMutex = remember(id) { Mutex() }
+    val requests = remember(scope) { EditorRequests(scope, model.guideScope, nanoMutex) }
     DisposableEffect(requests) { onDispose { requests.closeDraft() } }
     // A saved card also supplies a context for manually requested translations.
     val providerSense = selected ?: original?.takeIf { it.english == currentQuery }?.let {
@@ -221,25 +225,53 @@ internal fun CardEditor(
                 val result = distinctMeanings(lookup(currentQuery))
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 suggestions = result
+                lookupSucceeded = true
                 queryState = if (result.isEmpty()) "Sin resultados. Podés completar la tarjeta a mano." else ""
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                lookupSucceeded = false
                 queryState = "No se pudo consultar. Podés completar la tarjeta a mano."
             }
         }
     }
-    // Older or manually created cards may never have stored pronunciation. Only prefill
-    // an exact definition/category match or a pronunciation shared by every candidate.
-    LaunchedEffect(suggestions) {
-        if (original != null && currentQuery == original.english && ipa.isBlank() && !manualIpa && selectedKey == null) {
-            val matches = suggestions.filter { senseText(it.definition) == senseText(original.definition) &&
-                it.category.equals(original.senseCategories, true) }
-            val candidates = matches.ifEmpty { suggestions }
-            val sounds = candidates.map { it.pronunciation?.let { sound -> preferredIpa(sound.ipa) } }.distinct()
-            if (sounds.size == 1 && sounds.first() != null) {
-                ipa = sounds.first().orEmpty()
-                ipaSource = candidates.first().pronunciation!!.source
+    val savedSenseMatches = suggestions.filter {
+        original != null && original.english == currentQuery && original.definition.isNotBlank() &&
+            senseText(it.definition) == senseText(original.definition) &&
+            (original.senseCategories.isBlank() || it.category.equals(original.senseCategories, true))
+    }
+    val ipaCandidates = selected?.let(::listOf) ?: savedSenseMatches.ifEmpty { suggestions }
+    val dictionaryIpa = ipaCandidates.map { candidate ->
+        candidate.pronunciation?.let { sound -> preferredIpa(sound.ipa)?.let { sound.copy(ipa = it) } }
+    }.let { sounds ->
+        val first = sounds.firstOrNull()
+        first?.takeIf { sounds.all { sound -> sound?.ipa == it.ipa } }
+    }
+    val ipaContext = lookupSucceeded?.takeIf { selectedKey == null || selected != null }?.let {
+        ipaContext(currentQuery, selected, ipaCandidates, original, lookupSucceeded = it)
+    }
+    val ipaScope = rememberCoroutineScope()
+    val ipaRequests = remember(id) { mutableMapOf<IpaContext, EditorRequest<String>>() }
+    val ipaRequest = ipaContext?.takeIf { dictionaryIpa == null }
+        ?.let { ipaRequests.getOrPut(it) { EditorRequest(ipaScope) } }
+    val ipaAnswer = ipaRequest?.result
+    val ipaSelectionKey = selectedKey
+    LaunchedEffect(dictionaryIpa, ipaContext, ipaAnswer, ipa, manualIpa, currentQuery, ipaSelectionKey) {
+        if (ipa.isNotBlank() || manualIpa || english.trim() != currentQuery || selectedKey != ipaSelectionKey ||
+            lookupSucceeded == null || (selectedKey != null && selected == null)) return@LaunchedEffect
+        if (dictionaryIpa != null) {
+            ipa = dictionaryIpa.ipa
+            ipaSource = dictionaryIpa.source
+        } else if (ipaContext != null && ipaRequest != null) {
+            if (ipaAnswer != null) {
+                if (ipaAnswer.isNotBlank()) {
+                    ipa = ipaAnswer
+                    ipaSource = GEMINI_IPA
+                }
+            } else {
+                ipaRequest.start(onFailure = "") {
+                    nanoMutex.withLock { ipaSuggestion(ipaContext)?.let(::parseSuggestedIpa).orEmpty() }
+                }
             }
         }
     }
@@ -258,12 +290,14 @@ internal fun CardEditor(
         if (MeaningField.Example in automatic || MeaningField.Example in applied) exampleSource = ""
         if (MeaningField.Synonyms in automatic || MeaningField.Synonyms in applied) synonymSource = ""
         if (!manualIpa) {
-            val pronunciation = value.pronunciation
-            val savedSound = original?.takeIf { it.english == currentQuery && it.definition.isNotBlank() &&
-                senseText(it.definition) == senseText(value.definition) &&
-                it.senseCategories.equals(value.category, ignoreCase = true) }
-            ipa = preferredIpa(pronunciation?.ipa.orEmpty()) ?: preferredIpa(savedSound?.ipa.orEmpty()).orEmpty()
-            ipaSource = if (pronunciation != null) pronunciation.source else savedSound?.ipaSource.orEmpty()
+            val savedSound = original?.takeIf { it.english == currentQuery &&
+                (it.definition.isBlank() || senseText(it.definition) == senseText(value.definition)) }
+            val savedIpa = preferredIpa(savedSound?.ipa.orEmpty())
+            val dictionarySound = value.pronunciation?.let { sound ->
+                preferredIpa(sound.ipa)?.let { sound.copy(ipa = it) }
+            }
+            ipa = savedIpa ?: dictionarySound?.ipa.orEmpty()
+            ipaSource = if (savedIpa != null) savedSound?.ipaSource.orEmpty() else dictionarySound?.source.orEmpty()
         }
         selectedKey = value.selectionKey()
         choosingExample = value.examples.distinct().size > 1 &&

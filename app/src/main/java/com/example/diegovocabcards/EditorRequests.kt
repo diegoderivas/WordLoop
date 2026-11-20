@@ -47,9 +47,12 @@ internal class EditorSenseRequests(scope: CoroutineScope, guideScope: CoroutineS
     val guide = EditorRequest<UsageNoteResult>(guideScope)
 }
 
-internal class EditorRequests(private val scope: CoroutineScope, private val guideScope: CoroutineScope = scope) {
+internal class EditorRequests(
+    private val scope: CoroutineScope,
+    private val guideScope: CoroutineScope = scope,
+    val nano: Mutex = Mutex()
+) {
     private val senses = mutableMapOf<Suggestion, EditorSenseRequests>()
-    val nano = Mutex()
     private var savedGuide: Deferred<UsageNoteResult>? = null
 
     fun retainForSave(guide: Deferred<UsageNoteResult>?): Deferred<UsageNoteResult>? {

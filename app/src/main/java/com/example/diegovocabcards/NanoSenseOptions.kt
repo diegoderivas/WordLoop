@@ -18,22 +18,27 @@ internal suspend fun nanoSenseOptions(term: String, sense: Suggestion, task: Sen
     }
     val context = listOf(term, sense.category, sense.definition, sense.examples.firstOrNull().orEmpty())
         .joinToString("\n") { it.replace(Regex("\\s+"), " ").take(400) }
+    val answer = nanoSenseAnswer("$instruction No explanation. If unsure return NONE.\nExpression, category, definition, example:\n$context")
+        .orEmpty().trim()
+    val terms = if (task == SenseRequest.Synonyms) answer.split(',') else listOf(answer)
+    return terms.map { it.trim().trim('"') }.filter {
+        it.matches(Regex("""[\p{L}][\p{L}\p{M}'’ -]{0,79}""")) &&
+            it.split(' ').size <= 9 && !it.equals("NONE", true) &&
+            (task == SenseRequest.Translation || !it.equals(term, true))
+    }.distinctBy { it.lowercase() }.take(4)
+}
+
+internal suspend fun nanoSenseAnswer(prompt: String, maxTokens: Int = 64): String? {
     val model = Generation.getClient()
     try {
         return withTimeoutOrNull(60_000) {
-            if (model.checkStatus() != FeatureStatus.AVAILABLE) return@withTimeoutOrNull emptyList()
-            val request = generateContentRequest(TextPart("$instruction No explanation. If unsure return NONE.\nExpression, category, definition, example:\n$context")) {
+            if (model.checkStatus() != FeatureStatus.AVAILABLE) return@withTimeoutOrNull null
+            val request = generateContentRequest(TextPart(prompt)) {
                 temperature = 0.1f
-                maxOutputTokens = 64
+                maxOutputTokens = maxTokens
             }
-            val answer = model.generateContent(request).candidates.firstOrNull()?.text.orEmpty().trim()
-            val terms = if (task == SenseRequest.Synonyms) answer.split(',') else listOf(answer)
-            terms.map { it.trim().trim('"') }.filter {
-                it.matches(Regex("""[\p{L}][\p{L}\p{M}'’ -]{0,79}""")) &&
-                    it.split(' ').size <= 9 && !it.equals("NONE", true) &&
-                    (task == SenseRequest.Translation || !it.equals(term, true))
-            }.distinctBy { it.lowercase() }.take(4)
-        }.orEmpty()
+            model.generateContent(request).candidates.firstOrNull()?.text
+        }
     } finally {
         model.close()
     }
