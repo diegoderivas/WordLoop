@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,8 +29,8 @@ internal val LocalStudyCards = compositionLocalOf { emptyList<Card>() }
 internal val LocalAutomaticSpeech = compositionLocalOf { true }
 
 private enum class Screen(val title: String) {
-    Home("Inicio"), Library("Biblioteca"), Add("Añadir tarjeta"),
-    Review("Repasar"), Study("Repasar"), Manual("Práctica manual"), Settings("Configuración"), ReviewOptions("Ajustes de repaso"), Edit("Editar tarjeta")
+    Home("Home"), Library("Library"), Add("Add card"),
+    Review("Review"), Study("Review"), Manual("Manual practice"), Settings("Settings"), ReviewOptions("Review intervals"), Edit("Edit card")
 }
 
 private val mainTabs = listOf(Screen.Home to R.drawable.nav_home, Screen.Library to R.drawable.nav_library,
@@ -46,6 +48,7 @@ internal fun VocabCardsApp(
     backupDefaults: com.example.diegovocabcards.data.LibrarySettings = com.example.diegovocabcards.data.LibrarySettings(),
     onVoiceChange: (String) -> Unit = {},
     onAutomaticSpeech: (Boolean) -> Unit = {},
+    dictionaryLookup: suspend (String) -> List<Suggestion> = Dictionary::lookup,
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
@@ -127,6 +130,7 @@ internal fun VocabCardsApp(
 
     CompositionLocalProvider(LocalAutomaticSpeech provides automaticSpeech, LocalStudyCards provides rows.orEmpty()) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Surface(color = MaterialTheme.colorScheme.surface) {
                 Row(
@@ -137,15 +141,15 @@ internal fun VocabCardsApp(
                 ) {
                     if (!mainScreen) {
                         IconButton(onClick = back, enabled = !model.saving) {
-                            Icon(painterResource(R.drawable.nav_back), "Volver")
+                            Icon(painterResource(R.drawable.nav_back), stringResource(R.string.ui_back))
                         }
                     }
-                    Text(if (home) "DiegoVocabCards" else screen.title,
+                    Text(screen.title,
                         Modifier.weight(1f).padding(horizontal = 4.dp).semantics { heading() },
                         style = MaterialTheme.typography.titleLarge)
                     if (mainScreen) {
                         IconButton(onClick = { settingsOrigin = screen; screen = Screen.Settings }) {
-                            Icon(painterResource(R.drawable.nav_settings), "Configuración")
+                            Icon(painterResource(R.drawable.nav_settings), stringResource(R.string.ui_settings))
                         }
                     }
                 }
@@ -167,38 +171,38 @@ internal fun VocabCardsApp(
             val scroll = rememberScrollState()
             Column(
                 Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
-                    .then(if (screen in listOf(Screen.Library, Screen.Study, Screen.Manual)) Modifier
+                    .then(if (screen in listOf(Screen.Library, Screen.Study, Screen.Manual, Screen.Add, Screen.Edit)) Modifier
                         else Modifier.verticalScroll(scroll))
                     .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val cards = rows
                 if (cards == null && screen !in listOf(Screen.Home, Screen.Settings, Screen.ReviewOptions)) {
-                    Text("Cargando biblioteca…")
+                    Text(stringResource(R.string.ui_loading_library))
                     return@Column
                 }
                 when (screen) {
                     Screen.Home -> {
                         ReviewDirections(queues, home = true, onStart = ::startStudy)
                         OutlinedButton(onClick = { add(Screen.Home) }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Añadir tarjeta")
+                            Text(stringResource(R.string.ui_add_card))
                         }
                     }
                     Screen.Library -> {
                         var progressId by rememberSaveable { mutableStateOf<String?>(null) }
                         progressId?.let { ReviewDetails(it, model.reviews) { progressId = null } }
                         Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
-                        onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it },
+                        schedules = schedules.orEmpty(), onAnother = { newDraft(it.english, it.tags, Screen.Library) }, onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it },
                             filter = libraryTag, onFilter = { libraryTag = it },
                             onPractice = { manualTag = it; screen = Screen.Manual })
                     }
-                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model,
+                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model, lookup = dictionaryLookup, usageNotes = guideGenerator,
                         onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
-                        TextButton(onClick = { showProgress = true }) { Text("Progreso de repaso") }
+                        TextButton(onClick = { showProgress = true }) { Text(stringResource(R.string.ui_review_history)) }
                         if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
-                        CardEditor(original, original.english, original.tags, knownTags, model,
+                        CardEditor(original, original.english, original.tags, knownTags, model, lookup = dictionaryLookup, usageNotes = guideGenerator,
                             onOpenExisting = { editId = it },
                             fromStudy = editOrigin == Screen.Study || editOrigin == Screen.Manual) {
                             newDraft(it.english, it.tags, Screen.Library)
@@ -207,10 +211,10 @@ internal fun VocabCardsApp(
                     Screen.Review -> {
                         ReviewDirections(queues, home = false, onStart = ::startStudy)
                         if (cards.orEmpty().isEmpty()) {
-                            TextButton(onClick = { add(Screen.Review) }) { Text("Añadir tarjeta") }
+                            TextButton(onClick = { add(Screen.Review) }) { Text(stringResource(R.string.ui_add_card)) }
                         } else {
                             TextButton(onClick = { manualTag = null; screen = Screen.Manual }) {
-                                Text("Práctica manual sin calificar")
+                                Text(stringResource(R.string.ui_manual_practice))
                             }
                         }
                     }
@@ -230,18 +234,21 @@ internal fun VocabCardsApp(
                                     screen = Screen.Home
                                 }
                             }
-                        } else Text("Cargando repasos…")
+                        } else Text(stringResource(R.string.ui_loading_reviews))
                     }
                     Screen.Settings -> {
-                        OutlinedButton(onClick = { screen = Screen.ReviewOptions }) { Text("Ajustes de repaso") }
+                        Section { AppearanceOptions(mode, onModeChange) }
+                        Section {
+                        Text(stringResource(R.string.ui_pronunciation), style = MaterialTheme.typography.titleMedium)
                         Row(Modifier.fillMaxWidth().toggleable(value = automaticSpeech, role = Role.Switch,
                             onValueChange = onAutomaticSpeech).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Pronunciación automática", Modifier.weight(1f))
+                            Text(stringResource(R.string.ui_auto_play_audio), Modifier.weight(1f))
                             Switch(automaticSpeech, onCheckedChange = null)
                         }
                         VoiceOptions(backupDefaults.voice, onVoiceChange)
-                        AppearanceOptions(mode, onModeChange)
-                        BackupOptions(model.backup, backupDefaults)
+                        }
+                        OutlinedButton(onClick = { screen = Screen.ReviewOptions }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_review_intervals)) }
+                        Section { BackupOptions(model.backup, backupDefaults) }
                     }
                     Screen.ReviewOptions -> ReviewOptions(reviewSettings) {
                         onReviewSettingsChange(it)
@@ -256,7 +263,7 @@ internal fun VocabCardsApp(
 
 @Composable
 private fun AppearanceOptions(mode: Appearance, onModeChange: (Appearance) -> Unit) {
-    Text("Apariencia", style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.ui_appearance), style = MaterialTheme.typography.titleMedium)
     Column(Modifier.selectableGroup()) {
         for (option in Appearance.entries) {
             Row(
@@ -269,9 +276,9 @@ private fun AppearanceOptions(mode: Appearance, onModeChange: (Appearance) -> Un
             ) {
                 RadioButton(selected = mode == option, onClick = null)
                 Text(when (option) {
-                    Appearance.System -> "Automático (seguir al teléfono)"
-                    Appearance.Light -> "Claro"
-                    Appearance.Dark -> "Oscuro"
+                    Appearance.System -> "System"
+                    Appearance.Light -> "Light"
+                    Appearance.Dark -> "Dark"
                 })
             }
         }

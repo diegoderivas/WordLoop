@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -44,7 +46,7 @@ internal fun SwipeCardActions(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
                     Box(Modifier.width(actionWidth).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         IconButton(enabled = revealed && draggingOffset == null, onClick = onDelete) {
-                            Icon(painterResource(R.drawable.delete_sense), "Borrar acepción")
+                            Icon(painterResource(R.drawable.delete_sense), stringResource(R.string.ui_delete_meaning))
                         }
                     }
                 }
@@ -69,7 +71,7 @@ internal fun SwipeCardActions(
                     )
                 }
                 .semantics {
-                    customActions = listOf(CustomAccessibilityAction("Borrar acepción") {
+                    customActions = listOf(CustomAccessibilityAction("Delete meaning") {
                         onDelete()
                         true
                     })

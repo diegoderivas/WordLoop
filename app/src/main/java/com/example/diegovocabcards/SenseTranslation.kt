@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
@@ -110,6 +112,6 @@ internal fun TranslationAttribution(modifier: Modifier = Modifier) {
         val bytes = Base64.decode(encoded, Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
     }
-    Image(badge, contentDescription = "Traducción automática de Google Translate",
+    Image(badge, contentDescription = stringResource(R.string.ui_translated_by_google),
         modifier = modifier.size(120.dp, 16.dp))
 }

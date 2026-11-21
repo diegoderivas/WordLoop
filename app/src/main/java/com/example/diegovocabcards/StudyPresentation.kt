@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,31 +35,14 @@ internal fun StudyPresentation(
             player.speak(card.english)
         }
     }
-    if (revealed) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(caption, style = MaterialTheme.typography.labelLarge)
-                cardTools(card)
-                StudyTile(card, spanishFirst, revealed = true)
-            }
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
-        }
-    } else {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(caption, style = MaterialTheme.typography.labelLarge)
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                Box(
-                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    StudyTile(card, spanishFirst, revealed = false)
-                }
-            }
-            Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
-                Text("Mostrar respuesta", textAlign = TextAlign.Center)
-            }
+            StudyTile(card, spanishFirst, revealed)
+            if (revealed) cardTools(card)
         }
+        if (revealed) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
+        else Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) { Text(stringResource(R.string.ui_show_answer)) }
     }
 }
 
@@ -66,7 +51,7 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
     val attributed = GOOGLE_TRANSLATION in card.source
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             Modifier.fillMaxWidth().padding(20.dp),
@@ -83,7 +68,7 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
             if (!revealed) {
                 val library = LocalStudyCards.current
                 remember(card, library, spanishFirst) { studyHint(card, library, spanishFirst) }?.let {
-                    Text("Pista · $it", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                    Text("Hint · $it", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                 }
             }
             if (revealed) {
@@ -113,6 +98,6 @@ private fun SpanishStudyText(card: Card, style: androidx.compose.ui.text.TextSty
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(card.spanish, style = style, textAlign = TextAlign.Center)
         if (attributed) TranslationAttribution()
-        if (GEMINI_TRANSLATION in card.source) Text(GEMINI_TRANSLATION, style = MaterialTheme.typography.labelSmall)
+        if (GEMINI_TRANSLATION in card.source) Text(stringResource(R.string.ui_translation_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
     }
 }

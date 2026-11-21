@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import android.database.sqlite.SQLiteException
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -29,8 +31,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal val reviewChoices = listOf(
-    Rating.AGAIN to "Otra vez", Rating.HARD to "Difícil",
-    Rating.GOOD to "Bien", Rating.EASY to "Fácil"
+    Rating.AGAIN to "Again", Rating.HARD to "Hard",
+    Rating.GOOD to "Good", Rating.EASY to "Easy"
 )
 
 @Composable
@@ -61,27 +63,38 @@ internal fun ReviewDirections(
     home: Boolean,
     onStart: (Direction?) -> Unit
 ) {
-    Text(if (home) "Para repasar" else "Repaso programado", style = MaterialTheme.typography.headlineSmall)
     if (queues == null) {
-        Text("Cargando repasos…")
+        Text(stringResource(R.string.ui_loading_reviews))
         return
     }
     val mixed = queues.getValue(null)
-    Text("Pendientes: ${mixed.dueCount} · Nuevas: ${mixed.newCount}")
-    Button(onClick = { onStart(null) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-        Text("Repasar en ambos sentidos")
+    Card(colors = CardDefaults.cardColors(containerColor = if (home) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (home) "Today’s review" else "Today", style = MaterialTheme.typography.titleLarge)
+            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.questions, mixed.ready.size, mixed.ready.size))
+            if (home) for (side in listOf(Direction.EN_ES, Direction.ES_EN)) {
+                SummaryRow(side.label, queues.getValue(side).ready.size)
+            } else {
+                SummaryRow("Learning", mixed.ready.count { it.learning })
+                SummaryRow("Due for review", mixed.dueCount - mixed.ready.count { it.learning })
+                SummaryRow("New", mixed.newCount)
+            }
+            Button(onClick = { onStart(null) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
+                colors = if (home) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary) else ButtonDefaults.buttonColors()) { Text(stringResource(R.string.ui_start_review)) }
+        }
     }
-    if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+    if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
     var advanced by rememberSaveable { mutableStateOf(false) }
-    TextButton(onClick = { advanced = !advanced }) { Text("Opciones avanzadas") }
+    TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.ui_advanced_options)) }
     if (advanced) for (direction in Direction.entries) {
         val queue = queues.getValue(direction)
         OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(),
             enabled = queue.ready.isNotEmpty()) {
             Text(direction.label)
         }
-        Text("Pendientes: ${queue.dueCount} · Nuevas: ${queue.newCount}", style = MaterialTheme.typography.bodySmall)
-        if (queue.ready.isEmpty()) queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
+        Text("Due: ${queue.dueCount} · New: ${queue.newCount}", style = MaterialTheme.typography.bodySmall)
+        if (queue.ready.isEmpty()) queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
     }
 }
 
@@ -103,13 +116,13 @@ internal fun ScheduledReview(
     val question = queue.ready.find { it.card.id == currentId && it.turn == turn && it.direction == side }
     if (finished) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Repaso terminado", style = MaterialTheme.typography.headlineSmall)
-            Text("Calificaciones guardadas: $completed")
+            Text(stringResource(R.string.ui_review_complete), style = MaterialTheme.typography.headlineSmall)
+            Text("Ratings saved: $completed")
             if (queue.ready.isEmpty()) {
-                Text("No hay tarjetas pendientes en este sentido.")
-                queue.nextDue?.let { Text("Próximo repaso: ${formatReviewDate(it)}") }
-            } else Text("Ya hay tarjetas disponibles en este sentido.")
-            Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Volver a Inicio") }
+                Text(stringResource(R.string.ui_no_questions_due))
+                queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
+            } else Text(stringResource(R.string.ui_more_questions_are_available))
+            Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_back_to_home)) }
         }
     } else if (question == null) {
         // Advance only once Room has published the committed turn.
@@ -125,7 +138,7 @@ internal fun ScheduledReview(
         }
     } else {
         key(question.card.id, question.direction, turn) {
-            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools) { rating, revealedAt ->
+            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools, completed, queue.ready.size) { rating, revealedAt ->
                 dao.rate(question.card.id, question.direction, question.turn, rating, clock.millis(), settings, revealedAt)
             }
         }
@@ -141,6 +154,7 @@ private fun StudyQuestion(
     clock: Clock,
     settings: ReviewSettings,
     cardTools: @Composable (Card) -> Unit,
+    completed: Int, remaining: Int,
     onRate: suspend (Rating, Long) -> Unit
 ) {
     var revealedAt by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -151,16 +165,16 @@ private fun StudyQuestion(
     val at = revealedAt
     StudyPresentation(
         card, spanishFirst, revealed = at != null,
-        caption = "${direction.label} · ${if (turn == 0) "Nueva" else "Pendiente"}",
+        caption = "${direction.label} · ${completed + 1} of ${completed + remaining}",
         onReveal = { revealedAt = clock.millis() }, cardTools = cardTools
     ) {
         if (at != null) {
-            if (failed) Text("No se pudo guardar. Tocá la calificación para reintentar.", color = MaterialTheme.colorScheme.error)
+            if (failed) Text(stringResource(R.string.ui_could_not_save_tap_a_rating_to_retry), color = MaterialTheme.colorScheme.error)
             val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
                 if (turn > 0) value = dao.latest(card.id, direction)
             }
             if (turn > 0 && previous?.turn != turn) {
-                Text("Cargando intervalos…")
+                Text(stringResource(R.string.ui_loading_intervals))
                 return@StudyPresentation
             }
             val intervals = remember(previous, settings, at) {
@@ -210,4 +224,4 @@ private fun StudyQuestion(
 }
 
 internal fun formatReviewDate(at: Long): String =
-    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(at))
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM, java.util.Locale.UK).format(Date(at))

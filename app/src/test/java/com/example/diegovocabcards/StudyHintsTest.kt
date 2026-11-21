@@ -9,8 +9,8 @@ class StudyHintsTest {
     private val dismiss = fire.copy(id = "b", spanish = "despedir", senseCategories = "verb")
 
     @Test fun ambiguousEnglishUsesTheSenseCategory() {
-        assertEquals("Sustantivo", studyHint(fire, listOf(fire, dismiss), false))
-        assertEquals("Verbo", studyHint(dismiss, listOf(fire, dismiss), false))
+        assertEquals("Noun", studyHint(fire, listOf(fire, dismiss), false))
+        assertEquals("Verb", studyHint(dismiss, listOf(fire, dismiss), false))
         assertNull(studyHint(fire, listOf(fire, dismiss), true))
     }
 

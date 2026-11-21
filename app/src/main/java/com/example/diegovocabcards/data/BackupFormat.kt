@@ -92,9 +92,9 @@ internal object BackupFormat {
 
     fun read(source: InputStream): LibraryBackup {
         val input = DataInputStream(source.buffered())
-        require(input.readUTF() == MAGIC) { "El archivo no es una copia de DiegoVocabCards." }
+        require(input.readUTF() == MAGIC) { "This file is not a WordLoop backup." }
         val version = input.readInt()
-        require(version in 1..VERSION) { "La versión de esta copia es incompatible." }
+        require(version in 1..VERSION) { "This backup version is incompatible." }
         val size = input.readInt()
         require(size in 1..MAX_BYTES)
         val checksum = ByteArray(32).also(input::readFully)

@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -240,14 +242,14 @@ internal fun EnglishPronunciation(
                 content()
                 if (text.isNotBlank()) {
                     IconButton(onClick = play) {
-                        Icon(painterResource(R.drawable.pronunciation_speaker), "Escuchar pronunciación")
+                        Icon(painterResource(R.drawable.pronunciation_speaker), stringResource(R.string.ui_listen_to_pronunciation))
                     }
                 }
             }
         }
         if (ipa != null) {
             val transcription = preferredIpa(ipa)
-            Text(transcription ?: "Sin IPA", style = if (transcription == null) MaterialTheme.typography.bodySmall
+            Text(transcription ?: "IPA unavailable", style = if (transcription == null) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.titleSmall)
         }
     }
@@ -263,8 +265,8 @@ private fun PronunciationControl(text: String, button: @Composable (() -> Unit) 
     }
     if (requested && (player == null ||
             (player.requestedText == text && player.state == SpeechState.Unavailable))) {
-        Text("No hay una voz inglesa local disponible.", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.ui_no_local_english_voice_available), style = MaterialTheme.typography.bodySmall)
     } else if (player?.requestedText == text && player.state == SpeechState.Loading) {
-        Text("Preparando la voz local…", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.ui_preparing_voice), style = MaterialTheme.typography.bodySmall)
     }
 }

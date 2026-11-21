@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,9 +18,9 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 private fun backupCounts(senses: Int, events: Int): String {
-    val cards = if (senses == 1) "1 acepción" else "$senses acepciones"
-    val grades = if (events == 1) "1 calificación" else "$events calificaciones"
-    return "$cards y $grades"
+    val cards = if (senses == 1) "1 meaning" else "$senses meanings"
+    val grades = if (events == 1) "1 rating" else "$events ratings"
+    return "$cards and $grades"
 }
 
 @Composable
@@ -38,8 +40,8 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 message = when (error.message) {
-                    "La versión de esta copia es incompatible." -> error.message.orEmpty()
-                    else -> "No se pudo completar la operación. Revisá el archivo y volvé a intentarlo."
+                    "This backup version is incompatible." -> error.message.orEmpty()
+                    else -> "Could not complete the operation. Check the file and try again."
                 }
             } finally { busy = false }
         }
@@ -50,7 +52,7 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
                 val snapshot = dao.snapshot(defaults)
                 requireNotNull(resolver.openOutputStream(uri, "wt")).use { BackupFormat.write(snapshot, it) }
             }
-            message = "Copia exportada."
+            message = "Backup exported."
         }
     }
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -62,20 +64,20 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
             preview = incoming
         }
     }
-    fun exportCurrent() = export.launch("DiegoVocabCards-${LocalDate.now()}.dvc")
-    Text("Copia de seguridad", style = MaterialTheme.typography.titleMedium)
-    OutlinedButton(onClick = ::exportCurrent, enabled = !busy) { Text("Exportar copia") }
-    OutlinedButton(onClick = { restore.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Restaurar copia") }
-    if (busy) Text("Procesando copia…")
+    fun exportCurrent() = export.launch("WordLoop-${LocalDate.now()}.dvc")
+    Text(stringResource(R.string.ui_backup), style = MaterialTheme.typography.titleMedium)
+    OutlinedButton(onClick = ::exportCurrent, enabled = !busy) { Text(stringResource(R.string.ui_export_backup)) }
+    OutlinedButton(onClick = { restore.launch(arrayOf("*/*")) }, enabled = !busy) { Text(stringResource(R.string.ui_restore_backup)) }
+    if (busy) Text(stringResource(R.string.ui_processing_backup))
     if (message.isNotBlank() && preview == null) Text(message)
     preview?.let { incoming ->
-        AlertDialog(onDismissRequest = { if (!busy) preview = null }, title = { Text("Restaurar biblioteca") },
+        AlertDialog(onDismissRequest = { if (!busy) preview = null }, title = { Text(stringResource(R.string.ui_restore_library)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Contenido actual: ${backupCounts(currentCounts.first, currentCounts.second)}. Al restaurar se reemplazan la biblioteca y los ajustes.")
-                    Text("La copia contiene ${backupCounts(incoming.senses.size, incoming.history.size)}.")
+                    Text("Your library contains ${backupCounts(currentCounts.first, currentCounts.second)}. Restoring replaces your library and settings.")
+                    Text("This backup contains ${backupCounts(incoming.senses.size, incoming.history.size)}.")
                     if (currentCounts.first > 0) TextButton(onClick = ::exportCurrent, enabled = !busy) {
-                        Text("Exportar una copia previa")
+                        Text(stringResource(R.string.ui_export_current_library_first))
                     }
                     if (message.isNotBlank()) Text(message)
                 }
@@ -84,10 +86,10 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
                 work {
                     dao.restore(incoming)
                     preview = null
-                    message = "Biblioteca restaurada."
+                    message = "Library restored."
                 }
-            }) { Text("Confirmar restauración") } },
-            dismissButton = { TextButton(onClick = { preview = null; message = "" }, enabled = !busy) { Text("Cancelar") } }
+            }) { Text(stringResource(R.string.ui_confirm_restore)) } },
+            dismissButton = { TextButton(onClick = { preview = null; message = "" }, enabled = !busy) { Text(stringResource(R.string.ui_cancel)) } }
         )
     }
 }

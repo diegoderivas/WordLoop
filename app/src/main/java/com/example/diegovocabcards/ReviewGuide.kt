@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -20,9 +22,11 @@ internal fun ReviewCardTools(card: Card, model: VocabularyModel, generator: Usag
     var open by rememberSaveable(card.id) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onEdit) { Text("Editar tarjeta") }
-        IconButton(onClick = { open = true }) {
-            Icon(painterResource(R.drawable.usage_book), "Guía de uso")
+        TextButton(onClick = onEdit) { Text(stringResource(R.string.ui_edit_card)) }
+        TextButton(onClick = { open = true }) {
+            Icon(painterResource(R.drawable.usage_book), null)
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.ui_usage_guide))
         }
     }
     if (open) ReviewGuideDialog(card, model, generator) { open = false }
@@ -54,32 +58,32 @@ private fun ReviewGuideDialog(
             status = UsageNoteResult.Error
         }
     }
-    AlertDialog(onDismissRequest = close, title = { Text("Guía de uso") },
+    AlertDialog(onDismissRequest = close, title = { Text(stringResource(R.string.ui_usage_guide)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(card.english, style = MaterialTheme.typography.titleMedium)
                 if (card.usageNote.isNotBlank()) {
-                    Text(GENERATED_WITH_NANO, style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.ui_generated_by_gemini_nano), style = MaterialTheme.typography.labelMedium)
                     Text(card.usageNote)
                 } else {
                     Text(when (status) {
-                        UsageNoteResult.Downloadable -> "Para preparar la guía, descargá Gemini Nano en el dispositivo."
-                        UsageNoteResult.Downloading -> "La descarga de Gemini Nano está en curso."
-                        UsageNoteResult.Unavailable -> "Gemini Nano no está disponible en este dispositivo."
-                        UsageNoteResult.Error -> "No se pudo guardar una guía para esta acepción."
-                        is UsageNoteResult.Ready -> "Abriendo la guía guardada…"
+                        UsageNoteResult.Downloadable -> "Download Gemini Nano to prepare the guide."
+                        UsageNoteResult.Downloading -> "Gemini Nano is downloading."
+                        UsageNoteResult.Unavailable -> "Gemini Nano is unavailable on this device."
+                        UsageNoteResult.Error -> "Could not save a guide for this meaning."
+                        is UsageNoteResult.Ready -> "Opening saved guide…"
                         null -> when (progress) {
-                            UsageNoteProgress.Checking -> "Comprobando el modelo local…"
-                            UsageNoteProgress.Downloading -> "Descargando Gemini Nano…"
-                            UsageNoteProgress.Generating -> "Preparando la guía…"
+                            UsageNoteProgress.Checking -> "Checking local model…"
+                            UsageNoteProgress.Downloading -> "Downloading Gemini Nano…"
+                            UsageNoteProgress.Generating -> "Preparing guide…"
                         }
                     })
                     if (status != null && status !is UsageNoteResult.Ready) {
                         TextButton(onClick = { download = status == UsageNoteResult.Downloadable; attempt++ }) {
-                            Text(if (status == UsageNoteResult.Downloadable) "Descargar modelo" else "Reintentar")
+                            Text(if (status == UsageNoteResult.Downloadable) "Download model" else "Retry")
                         }
                     }
                 }
             }
-        }, confirmButton = { TextButton(onClick = close) { Text("Volver al repaso") } })
+        }, confirmButton = { TextButton(onClick = close) { Text(stringResource(R.string.ui_back_to_review)) } })
 }

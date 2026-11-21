@@ -24,28 +24,7 @@ internal data class Suggestion(
     val pronunciation: DictionaryPronunciation? = null
 )
 
-internal fun categoryLabel(category: String): String = when (category) {
-    "noun" -> "Sustantivo"
-    "proper noun" -> "Nombre propio"
-    "verb" -> "Verbo"
-    "adjective" -> "Adjetivo"
-    "adverb" -> "Adverbio"
-    "pronoun" -> "Pronombre"
-    "preposition" -> "Preposición"
-    "conjunction" -> "Conjunción"
-    "interjection" -> "Interjección"
-    "determiner" -> "Determinante"
-    "particle" -> "Partícula"
-    "phrase", "idiom" -> "Expresión"
-    "proverb" -> "Proverbio"
-    "numeral" -> "Numeral"
-    "article" -> "Artículo"
-    "prefix" -> "Prefijo"
-    "suffix" -> "Sufijo"
-    "abbreviation" -> "Abreviatura"
-    "symbol" -> "Símbolo"
-    else -> category.replaceFirstChar { it.titlecase(Locale.ROOT) }
-}
+internal fun categoryLabel(category: String): String = category.replaceFirstChar { it.titlecase(Locale.ROOT) }
 
 internal object Dictionary {
     private val cache = object : LinkedHashMap<String, List<Suggestion>>(32, 0.75f, true) {

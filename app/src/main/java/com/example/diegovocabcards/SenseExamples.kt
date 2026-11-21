@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,15 +29,15 @@ internal fun SupportingSenseExample(
 ) {
     val recommended = examples.first()
     Column {
-        Text("Ejemplo recomendado", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.ui_suggested_example), style = MaterialTheme.typography.titleSmall)
         if (current != recommended) Text(recommended, style = MaterialTheme.typography.bodyMedium)
         if (examples.size > 1) {
-            TextButton(onClick = onChoose, enabled = enabled) { Text("Elegir ejemplo") }
+            TextButton(onClick = onChoose, enabled = enabled) { Text(stringResource(R.string.ui_choose_another)) }
         } else if (current != recommended) {
-            TextButton(onClick = { onUse(recommended) }, enabled = enabled) { Text("Usar ejemplo") }
+            TextButton(onClick = { onUse(recommended) }, enabled = enabled) { Text(stringResource(R.string.ui_use_example)) }
         }
         if (current.isNotBlank()) {
-            TextButton(onClick = onRemove, enabled = enabled) { Text("Quitar ejemplo") }
+            TextButton(onClick = onRemove, enabled = enabled) { Text(stringResource(R.string.ui_remove_example)) }
         }
     }
 }
@@ -49,21 +51,21 @@ internal fun ExamplePicker(
 ) {
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Elegí un ejemplo") },
+        title = { Text(stringResource(R.string.ui_choose_an_example)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(examples) { index, example ->
                     OutlinedCard(onClick = { onSelect(example) }, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (index == 0) Text("Recomendado", style = MaterialTheme.typography.labelMedium)
-                            if (example == current) Text("En la tarjeta", style = MaterialTheme.typography.labelMedium)
+                            if (index == 0) Text(stringResource(R.string.ui_recommended), style = MaterialTheme.typography.labelMedium)
+                            if (example == current) Text(stringResource(R.string.ui_on_your_card), style = MaterialTheme.typography.labelMedium)
                             Text(example)
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSelect("") }) { Text("Continuar sin ejemplo") } },
-        dismissButton = { TextButton(onClick = onClose) { Text("Cerrar") } }
+        confirmButton = { TextButton(onClick = { onSelect("") }) { Text(stringResource(R.string.ui_continue_without_an_example)) } },
+        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.ui_close)) } }
     )
 }

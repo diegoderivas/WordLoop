@@ -8,7 +8,7 @@ import java.time.Duration
 import java.time.Instant
 
 internal enum class Direction(val label: String) {
-    ES_EN("Español → Inglés"), EN_ES("Inglés → Español")
+    ES_EN("Spanish → English"), EN_ES("English → Spanish")
 }
 
 /** Snapshot after a rating. An absent snapshot means this sense/direction is new. */
@@ -64,7 +64,7 @@ internal object Fsrs {
 internal fun formatReviewInterval(milliseconds: Long): String {
     val seconds = milliseconds / 1000
     val days = seconds / 86_400
-    if (days > 0) return if (days == 1L) "1 día" else "$days días"
+    if (days > 0) return if (days == 1L) "1 day" else "$days days"
     val minutes = seconds / 60
     val remainder = seconds % 60
     return if (remainder == 0L) "$minutes min" else "$minutes min $remainder s"

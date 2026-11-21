@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import android.content.SharedPreferences
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,32 +67,32 @@ internal fun ReviewOptions(current: ReviewSettings, onSave: (ReviewSettings) -> 
     )
     val stepsValid = draft.firstLearningMinutes in 1..1439 &&
         draft.nextLearningMinutes in 1..1439 && draft.firstLearningMinutes < draft.nextLearningMinutes
-    ReviewNumberField("Retención objetivo (%)", retention, { retention = it },
-        draft.retention !in 80..97, "80–97 %. Un objetivo más alto acorta los intervalos en días.")
-    ReviewNumberField("Primer paso (min)", first, { first = it }, !stepsValid,
-        "Entre 1 y 1439 minutos. El primer paso debe ser más corto que el segundo.")
-    ReviewNumberField("Segundo paso (min)", next, { next = it }, !stepsValid)
-    ReviewNumberField("Reaprendizaje (min)", relearning, { relearning = it },
-        draft.relearningMinutes !in 1..1439, "Espera tras olvidar una tarjeta que ya estaba en repaso.")
+    ReviewNumberField("Target retention (%)", retention, { retention = it },
+        draft.retention !in 80..97, "80–97%. Higher retention shortens review intervals.")
+    ReviewNumberField("First step (min)", first, { first = it }, !stepsValid,
+        "1–1439 minutes. The first step must be shorter than the second.")
+    ReviewNumberField("Second step (min)", next, { next = it }, !stepsValid)
+    ReviewNumberField("Relearning (min)", relearning, { relearning = it },
+        draft.relearningMinutes !in 1..1439, "Delay after forgetting a previously reviewed card.")
     if (draft.isValid) {
         val intervals = remember(draft) {
             reviewChoices.map { (rating, label) ->
                 "$label · ${formatReviewInterval(Fsrs.rate(null, rating, 0L, draft).dueAt)}"
             }
         }
-        Text("Primera calificación de una tarjeta nueva", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.ui_first_rating_of_a_new_card), style = MaterialTheme.typography.titleSmall)
         Text(intervals.joinToString("\n"))
     }
-    Text("Los ajustes se aplican al volver a calificar. Las fechas guardadas se conservan.")
+    Text(stringResource(R.string.ui_new_settings_apply_at_the_next_rating_existing_due_dates))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = draft.isValid && draft != current, onClick = { onSave(draft) }) { Text("Guardar") }
+        Button(enabled = draft.isValid && draft != current, onClick = { onSave(draft) }) { Text(stringResource(R.string.ui_save_changes)) }
         TextButton(onClick = {
             val defaults = ReviewSettings()
             retention = defaults.retention.toString()
             first = defaults.firstLearningMinutes.toString()
             next = defaults.nextLearningMinutes.toString()
             relearning = defaults.relearningMinutes.toString()
-        }) { Text("Valores de fábrica") }
+        }) { Text(stringResource(R.string.ui_restore_defaults)) }
     }
 }
 
@@ -119,28 +121,28 @@ internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit)
     }
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Progreso de repaso") },
+        title = { Text(stringResource(R.string.ui_review_history)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val loaded = events
-                if (loaded == null) Text("Cargando progreso…")
+                if (loaded == null) Text(stringResource(R.string.ui_loading_history))
                 else for ((direction, history) in loaded) {
                     val event = history.firstOrNull()
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(direction.label, style = MaterialTheme.typography.titleSmall)
-                        if (event == null) Text("Nueva")
+                        if (event == null) Text(stringResource(R.string.ui_new))
                         else {
                             val memory = event.memory
                             val phase = when (memory.phase) {
-                                State.LEARNING -> "Paso de aprendizaje"
-                                State.REVIEW -> "Intervalo calculado por FSRS"
-                                State.RELEARNING -> "Paso de reaprendizaje"
+                                State.LEARNING -> "Learning"
+                                State.REVIEW -> "Review"
+                                State.RELEARNING -> "Relearning"
                             }
                             val grade = reviewChoices.first { it.first == event.rating }.second
-                            Text(if (memory.dueAt <= System.currentTimeMillis()) "Pendiente · $phase" else "Programada · $phase")
-                            Text("Última calificación: $grade · ${formatReviewDate(memory.reviewedAt)}")
-                            Text("Próximo repaso: ${formatReviewDate(memory.dueAt)}")
-                            Text("Historial reciente", style = MaterialTheme.typography.labelLarge)
+                            Text(if (memory.dueAt <= System.currentTimeMillis()) "Due now · $phase" else "Scheduled · $phase")
+                            Text("Last rating: $grade · ${formatReviewDate(memory.reviewedAt)}")
+                            Text("Next review: ${formatReviewDate(memory.dueAt)}")
+                            Text(stringResource(R.string.ui_recent_history), style = MaterialTheme.typography.labelLarge)
                             for (item in history) {
                                 val label = reviewChoices.first { it.first == item.rating }.second
                                 Text("${formatReviewDate(item.memory.reviewedAt)} · $label")
@@ -150,6 +152,6 @@ internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text("Cerrar") } }
+        confirmButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.ui_close)) } }
     )
 }

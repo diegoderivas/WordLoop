@@ -1,5 +1,7 @@
 package com.example.diegovocabcards
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,52 +22,45 @@ internal fun UsageNoteOffer(
     enabled: Boolean,
     onAddExample: (String) -> Unit
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    TextButton(onClick = { expanded = !expanded }) { Text("Guía de uso") }
     if (request.loading) {
-        Text("Preparando la guía de uso…", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.ui_preparing_usage_guide), style = MaterialTheme.typography.bodySmall)
         return
     }
-    if (!expanded) return
     fun start(download: Boolean = false) = onRequest(download)
     when (val details = request.result) {
-        null -> TextButton(onClick = { start() }, enabled = enabled) { Text("Entender el uso") }
+        null -> TextButton(onClick = { start() }, enabled = enabled) { Text(stringResource(R.string.ui_generate_guide)) }
         UsageNoteResult.Downloadable -> {
-            Text("Gemini Nano está listo para descargar. Usá Wi-Fi si querés evitar el consumo de datos móviles.")
-            TextButton(onClick = { start(download = true) }, enabled = enabled) { Text("Descargar modelo") }
+            Text(stringResource(R.string.ui_gemini_nano_is_ready_to_download_use_wi_fi_to_avoid_mobi))
+            TextButton(onClick = { start(download = true) }, enabled = enabled) { Text(stringResource(R.string.ui_download_model)) }
         }
         UsageNoteResult.Downloading -> {
-            Text("La descarga de Gemini Nano está en curso.")
-            TextButton(onClick = { start() }, enabled = enabled) { Text("Volver a comprobar") }
+            Text(stringResource(R.string.ui_gemini_nano_is_downloading))
+            TextButton(onClick = { start() }, enabled = enabled) { Text(stringResource(R.string.ui_check_again)) }
         }
         UsageNoteResult.Unavailable -> {
-            Text("Gemini Nano no está disponible en este dispositivo.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { start() }, enabled = enabled) { Text("Volver a comprobar") }
+            Text(stringResource(R.string.ui_gemini_nano_is_unavailable_on_this_device), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { start() }, enabled = enabled) { Text(stringResource(R.string.ui_check_again)) }
         }
         UsageNoteResult.Error -> {
-            Text("No se pudo preparar una nota. Podés seguir editando la tarjeta.",
+            Text(stringResource(R.string.ui_could_not_prepare_a_guide_you_can_keep_editing),
                 style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { start() }, enabled = enabled) { Text("Reintentar nota") }
+            TextButton(onClick = { start() }, enabled = enabled) { Text(stringResource(R.string.ui_retry_guide)) }
         }
         is UsageNoteResult.Ready -> {
             val note = details.note
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Nota de uso", style = MaterialTheme.typography.titleMedium)
-                    Text(GENERATED_WITH_NANO, style = MaterialTheme.typography.labelMedium)
-                    note.sections().forEach { (title, content) ->
-                        Text(title, style = MaterialTheme.typography.titleSmall)
-                        Text(content)
-                    }
-                    if (note.examples.isNotEmpty()) Text("Examples", style = MaterialTheme.typography.titleSmall)
+
+                    Text(stringResource(R.string.ui_generated_by_gemini_nano), style = MaterialTheme.typography.labelMedium)
+                    if (note.examples.isNotEmpty()) Text(stringResource(R.string.ui_examples), style = MaterialTheme.typography.titleSmall)
                     note.examples.forEachIndexed { index, example ->
                         Text(example)
-                        PronunciationButton(example, "Escuchar ejemplo ${index + 1}")
+                        PronunciationButton(example, "Listen to example ${index + 1}")
                         TextButton(onClick = { onAddExample(example) }, enabled = enabled) {
-                            Text("Añadir solo el ejemplo ${index + 1}")
+                            Text("Add example ${index + 1}")
                         }
                     }
-                    TextButton(onClick = { start() }, enabled = enabled) { Text("Regenerar nota") }
+                    TextButton(onClick = { start() }, enabled = enabled) { Text(stringResource(R.string.ui_generate_again)) }
                 }
             }
         }
@@ -83,22 +78,22 @@ internal fun SavedUsageContent(
     var showNote by rememberSaveable(note) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (examples.isNotBlank()) {
-            Text("Ejemplos de uso · $GENERATED_WITH_NANO", style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(R.string.ui_usage_examples_generated_by_gemini_nano), style = MaterialTheme.typography.labelMedium)
             examples.lineSequence().filter(String::isNotBlank).forEach { example ->
                 Text(example)
                 onRemoveExample?.let { remove ->
-                    TextButton(onClick = { remove(example) }) { Text("Quitar ejemplo generado") }
+                    TextButton(onClick = { remove(example) }) { Text(stringResource(R.string.ui_remove_generated_example)) }
                 }
             }
         }
         if (note.isNotBlank()) {
             TextButton(onClick = { showNote = !showNote }) {
-                Text(if (showNote) "Ocultar nota de uso" else "Ver nota de uso")
+                Text(if (showNote) "Hide saved guide" else "View saved guide")
             }
             if (showNote) {
-                Text(GENERATED_WITH_NANO, style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.ui_generated_by_gemini_nano), style = MaterialTheme.typography.labelMedium)
                 Text(note)
-                onRemoveNote?.let { remove -> TextButton(onClick = remove) { Text("Quitar nota de uso") } }
+                onRemoveNote?.let { remove -> TextButton(onClick = remove) { Text(stringResource(R.string.ui_remove_guide)) } }
             }
         }
     }

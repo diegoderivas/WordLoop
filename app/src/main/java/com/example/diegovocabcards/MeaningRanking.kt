@@ -110,7 +110,7 @@ internal fun getConstruction(senses: List<Suggestion>): List<Suggestion> = sense
     .map {
         // A participle's translation or usage example may require different wording in the full expression.
         it.copy(
-            category = "phrase", usage = listOf("A partir del participio", it.usage)
+            category = "phrase", usage = listOf("From the past participle", it.usage)
                 .filter { label -> label.isNotBlank() }.joinToString(" · "),
             spanish = emptyList(), examples = emptyList(), synonymOptions = emptyList(), pronunciation = null
         )

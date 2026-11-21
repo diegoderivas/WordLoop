@@ -4,7 +4,7 @@ import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.Schedule
 import io.github.openspacedrepetition.State
 
-internal data class Question(val card: Card, val turn: Int, val direction: Direction)
+internal data class Question(val card: Card, val turn: Int, val direction: Direction, val learning: Boolean = false)
 internal data class StudyQueue(
     val ready: List<Question>,
     val newCount: Int,
@@ -22,7 +22,7 @@ internal fun studyQueue(cards: List<Card>, schedules: List<Schedule>, direction:
     val seen = included.mapTo(mutableSetOf()) { it.senseId to it.direction }
     val due = included.filter { it.dueAt <= now }.sortedWith(compareBy<Schedule>(
         { it.phase == State.REVIEW }, { it.dueAt }, { it.senseId }, { it.direction.ordinal }
-    )).map { Question(byId.getValue(it.senseId), it.turn, it.direction) }
+    )).map { Question(byId.getValue(it.senseId), it.turn, it.direction, it.phase != State.REVIEW) }
     val new = buildList {
         for (card in cards.sortedBy { it.id }) for (side in Direction.entries) {
             if ((direction == null || side == direction) && (card.id to side) !in seen) {
