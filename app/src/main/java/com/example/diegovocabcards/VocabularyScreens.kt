@@ -36,6 +36,7 @@ internal fun Library(
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     var search by rememberSaveable { mutableStateOf("") }
     var progress by rememberSaveable { mutableStateOf(false) }
     var filters by rememberSaveable { mutableStateOf(false) }
@@ -58,13 +59,13 @@ internal fun Library(
     OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_search_english_or_spanish)) }, singleLine = true)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(false to "List", true to "Progress").forEach { (value, label) ->
-            FilterChip(selected = progress == value, onClick = { progress = value }, label = { Text(label) }, modifier = Modifier.weight(1f))
+            FilterChip(selected = progress == value, onClick = { focus.clearFocus(); progress = value }, label = { Text(label) }, modifier = Modifier.weight(1f))
         }
     }
     val active = listOfNotNull(filter, direction, status).size
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         TagMenu(order.label, LibraryOrder.entries.map { it.label }) { choice -> order = LibraryOrder.entries.first { it.label == choice } }
-        OutlinedButton(onClick = { filters = true }) { Text(if (active == 0) "Filters" else "Filters ($active)") }
+        OutlinedButton(onClick = { focus.clearFocus(); filters = true }) { Text(if (active == 0) "Filters" else "Filters ($active)") }
         TextButton(onClick = onAdd) { Text(stringResource(R.string.ui_add_card)) }
     }
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(stringResource(R.string.ui_organise_library)) }, text = {

@@ -18,16 +18,16 @@ class PracticeTest {
             Card("2", "run", "dirigir", "I run a business.", emptyList())
         )
         compose.setContent { Column { Practice(cards) {} } }
-        compose.onNodeWithText("Iniciar práctica").performClick()
+        compose.onNodeWithText("Start practice").performClick()
         for (spanishFirst in listOf(true, false)) for (card in cards) {
             compose.onNodeWithText(if (spanishFirst) card.spanish else card.english).assertIsDisplayed()
             compose.onNodeWithText(if (spanishFirst) card.english else card.spanish).assertDoesNotExist()
             compose.onNodeWithText(card.example).assertDoesNotExist()
-            compose.onNodeWithText("Mostrar respuesta").performClick()
+            compose.onNodeWithText("Show answer").performClick()
             compose.onNodeWithText(card.english).assertIsDisplayed()
             compose.onNodeWithText(card.example).assertIsDisplayed()
-            compose.onNodeWithText("Siguiente").performClick()
+            compose.onNodeWithText("Next").performClick()
         }
-        compose.onNodeWithText("Práctica terminada").assertIsDisplayed()
+        compose.onNodeWithText("Practice complete").assertIsDisplayed()
     }
 }

@@ -22,7 +22,8 @@ class ReviewGuideTest {
         "Use get fired from a job or get fired for doing something.", listOf("He got fired last week."))
 
     private fun tap(label: String) {
-        val node = compose.onNodeWithText(label)
+        compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onNode(hasText(label) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
         node.performClick()
     }
@@ -51,22 +52,22 @@ class ReviewGuideTest {
                 if (++calls == 1) UsageNoteResult.Unavailable else UsageNoteResult.Ready(note)
             }
             compose.setContent { active?.let { key(it) { VocabCardsApp(Appearance.Light, it, guideGenerator = generator) {} } } }
-            tap("Repasar en ambos sentidos")
+            tap("Start review")
             compose.onNodeWithText("/test/").assertDoesNotExist()
-            tap("Mostrar respuesta")
+            tap("Show answer")
             compose.onNodeWithText("/test/").assertExists()
-            tap("Editar tarjeta")
-            compose.onNodeWithText("Traducción al español").performScrollTo().performTextReplacement("que te despidan")
-            tap("Guardar")
-            compose.waitUntil(5000) { compose.onAllNodesWithText("Fácil").fetchSemanticsNodes().isNotEmpty() }
+            tap("Edit card")
+            compose.onNodeWithText("Spanish translation").performScrollTo().performTextReplacement("que te despidan")
+            tap("Save changes")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("Easy").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("que te despidan").assertExists()
-            compose.onNodeWithText("Mostrar respuesta").assertDoesNotExist()
+            compose.onNodeWithText("Show answer").assertDoesNotExist()
             val before = runBlocking { db.vocabulary().cards().first().single() }
-            val book = compose.onNodeWithContentDescription("Guía de uso")
+            val book = compose.onNodeWithText("Usage guide")
             book.performScrollTo().performClick()
-            tap("Reintentar")
+            tap("Retry")
             compose.waitUntil(5000) { compose.onAllNodesWithText(note.forStorage()).fetchSemanticsNodes().isNotEmpty() }
-            tap("Volver al repaso")
+            tap("Back to review")
             assertEquals(before.copy(usageNote = note.forStorage()), runBlocking { db.vocabulary().cards().first().single() })
             assertEquals(previous, history())
             assertEquals(schedules, runBlocking { db.reviews().schedules().first() })
@@ -76,10 +77,10 @@ class ReviewGuideTest {
             db.close()
             db = open()
             compose.runOnIdle { active = VocabularyModel(app, db) }
-            tap("Opciones avanzadas")
-            tap("Inglés → Español")
+            tap("Advanced options")
+            tap("English → Spanish")
             compose.onNodeWithText("/test/").assertExists()
-            tap("Mostrar respuesta")
+            tap("Show answer")
             book.performScrollTo().performClick()
             compose.onNodeWithText(note.forStorage()).assertExists()
             assertEquals(2, calls)

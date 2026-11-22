@@ -350,300 +350,300 @@ internal fun CardEditor(
     }
 
     Column(Modifier.fillMaxWidth().heightIn(max = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp)) {
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Section {
-    EnglishPronunciation(currentQuery, null) {
-        OutlinedTextField(english, { value ->
-            if (value.trim() != currentQuery) {
-                automatic.forEach { setValue(it, "") }
-                automaticFields = arrayListOf()
-                activeSource = ""
-                if (MeaningField.Example in automatic) exampleSource = ""
-                if (MeaningField.Synonyms in automatic) synonymSource = ""
-                if (MeaningField.Spanish in automatic) translationSource = ""
-                if (!manualIpa) { ipa = ""; ipaSource = "" }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Section {
+                EnglishPronunciation(currentQuery, null) {
+                    OutlinedTextField(english, { value ->
+                        if (value.trim() != currentQuery) {
+                            automatic.forEach { setValue(it, "") }
+                            automaticFields = arrayListOf()
+                            activeSource = ""
+                            if (MeaningField.Example in automatic) exampleSource = ""
+                            if (MeaningField.Synonyms in automatic) synonymSource = ""
+                            if (MeaningField.Spanish in automatic) translationSource = ""
+                            if (!manualIpa) { ipa = ""; ipaSource = "" }
+                        }
+                        english = value
+                    }, Modifier.weight(1f), enabled = !busy,
+                    label = { Text(stringResource(R.string.ui_headword)) }, singleLine = true)
+                }
+                OutlinedTextField(ipa, { value ->
+                    ipa = value
+                    ipaSource = MANUAL_IPA
+                    manualIpa = true
+                }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
+                label = { Text(stringResource(R.string.ui_pronunciation_ipa)) }, placeholder = { Text("/…/") })
             }
-            english = value
-        }, Modifier.weight(1f), enabled = !busy,
-            label = { Text(stringResource(R.string.ui_headword)) }, singleLine = true)
-    }
-    OutlinedTextField(ipa, { value ->
-        ipa = value
-        ipaSource = MANUAL_IPA
-        manualIpa = true
-    }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
-        label = { Text(stringResource(R.string.ui_pronunciation_ipa)) }, placeholder = { Text("/…/") })
-    }
-    val matches = localCards.filter { it.id != original?.id && currentQuery.isNotBlank() &&
-        senseText(it.english) == senseText(currentQuery) }
-    var viewingMatches by rememberSaveable(currentQuery) { mutableStateOf(false) }
-    if (matches.isNotEmpty()) {
-        val exact = selected?.let { sense -> matches.any { card ->
-            sense.definition.isNotBlank() && senseText(card.definition) == senseText(sense.definition) &&
-                card.senseCategories.equals(sense.category, true) &&
-                (sense.spanish.isEmpty() || sense.spanish.any { senseText(it) == senseText(card.spanish) })
-        } } == true
-        val possible = selected?.let { sense -> matches.any { card ->
-            card.definition.isBlank() || senseText(card.definition) == senseText(sense.definition) ||
-                sense.spanish.any { senseText(it) == senseText(card.spanish) }
-        } } == true
-        val message = when {
-            exact -> "You already have this meaning"
-            possible -> "Possible duplicate"
-            else -> "In your library"
-        }
-        TextButton(onClick = { viewingMatches = true }, enabled = !busy) {
-            Text("$message · View cards (${matches.size})")
-        }
-        if (viewingMatches) AlertDialog(onDismissRequest = { viewingMatches = false },
-            title = { Text("Cards for $currentQuery") }, text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    for (card in matches) TextButton(onClick = { viewingMatches = false; onOpenExisting(card.id) }) {
-                        Text(card.spanish)
+            val matches = localCards.filter { it.id != original?.id && currentQuery.isNotBlank() &&
+                senseText(it.english) == senseText(currentQuery) }
+            var viewingMatches by rememberSaveable(currentQuery) { mutableStateOf(false) }
+            if (matches.isNotEmpty()) {
+                val exact = selected?.let { sense -> matches.any { card ->
+                        sense.definition.isNotBlank() && senseText(card.definition) == senseText(sense.definition) &&
+                        card.senseCategories.equals(sense.category, true) &&
+                        (sense.spanish.isEmpty() || sense.spanish.any { senseText(it) == senseText(card.spanish) })
+                    } } == true
+                val possible = selected?.let { sense -> matches.any { card ->
+                        card.definition.isBlank() || senseText(card.definition) == senseText(sense.definition) ||
+                        sense.spanish.any { senseText(it) == senseText(card.spanish) }
+                    } } == true
+                val message = when {
+                    exact -> "You already have this meaning"
+                    possible -> "Possible duplicate"
+                    else -> "In your library"
+                }
+                TextButton(onClick = { viewingMatches = true }, enabled = !busy) {
+                    Text("$message · View cards (${matches.size})")
+                }
+                if (viewingMatches) AlertDialog(onDismissRequest = { viewingMatches = false },
+                title = { Text("Cards for $currentQuery") }, text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        for (card in matches) TextButton(onClick = { viewingMatches = false; onOpenExisting(card.id) }) {
+                            Text(card.spanish)
+                        }
+                    }
+                }, confirmButton = { TextButton(onClick = { viewingMatches = false }) { Text(stringResource(R.string.ui_close)) } })
+            }
+            if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
+                Text(if (selected == null || changingMeaning) "Choose a meaning" else "Meaning", style = MaterialTheme.typography.titleMedium)
+                if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
+                fun choose(suggestion: Suggestion) {
+                    changingMeaning = false
+                    more = false
+                    val incoming = fieldsFrom(suggestion)
+                    val preserving = mergeMeaningFields(currentValues, incoming, automatic, manual, false)
+                    val replacing = mergeMeaningFields(currentValues, incoming, automatic, manual, true)
+                    if (preserving != replacing) proposed = suggestion else if (suggestion != selected) {
+                        applySuggestion(suggestion)
+                        focus.clearFocus()
                     }
                 }
-            }, confirmButton = { TextButton(onClick = { viewingMatches = false }) { Text(stringResource(R.string.ui_close)) } })
-    }
-    if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
-        Text(if (selected == null || changingMeaning) "Choose a meaning" else "Meaning", style = MaterialTheme.typography.titleMedium)
-        if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
-        fun choose(suggestion: Suggestion) {
-            changingMeaning = false
-            more = false
-            val incoming = fieldsFrom(suggestion)
-            val preserving = mergeMeaningFields(currentValues, incoming, automatic, manual, false)
-            val replacing = mergeMeaningFields(currentValues, incoming, automatic, manual, true)
-            if (preserving != replacing) proposed = suggestion else if (suggestion != selected) {
-                applySuggestion(suggestion)
-                focus.clearFocus()
-            }
-        }
-        val groups = remember(suggestions, currentQuery) { rankedMeaningGroups(suggestions, currentQuery) }
-        val top = groups.take(3)
-        val visible = if (selected != null && top.none { selected == it.representative || selected in it.variants }) {
-            top.take(2) + MeaningGroup(selected, emptyList())
-        } else top
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            (if (selected != null && !changingMeaning) listOf(MeaningGroup(selected, emptyList())) else visible).forEach { group ->
-                val suggestion = selected?.takeIf { it in group.variants } ?: group.representative
-                MeaningOption(suggestion, suggestion == selected, busy, variantCount = group.variants.size) {
-                    choose(suggestion)
+                val groups = remember(suggestions, currentQuery) { rankedMeaningGroups(suggestions, currentQuery) }
+                val top = groups.take(3)
+                val visible = if (selected != null && top.none { selected == it.representative || selected in it.variants }) {
+                    top.take(2) + MeaningGroup(selected, emptyList())
+                } else top
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (if (selected != null && !changingMeaning) listOf(MeaningGroup(selected, emptyList())) else visible).forEach { group ->
+                        val suggestion = selected?.takeIf { it in group.variants } ?: group.representative
+                        MeaningOption(suggestion, suggestion == selected, busy, variantCount = group.variants.size) {
+                            choose(suggestion)
+                        }
+                    }
                 }
-            }
-        }
-        if (selected != null && !changingMeaning) TextButton(onClick = { changingMeaning = true }) { Text(stringResource(R.string.ui_change_meaning)) }
-        if ((selected == null || changingMeaning) && suggestions.size > top.size) {
-            TextButton(onClick = { focus.clearFocus(); more = true }) { Text(stringResource(R.string.ui_more_meanings)) }
-        }
-        if (more) {
-            AlertDialog(onDismissRequest = { more = false },
-                title = { Text(stringResource(R.string.ui_choose_a_meaning)) },
-                text = {
-                    LazyColumn(Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        groups.forEach { group ->
-                            item {
-                                val sense = group.representative
-                                MeaningOption(sense, sense == selected, busy, expanded = true) { choose(sense) }
-                            }
-                            items(group.variants) { variant ->
-                                Box(Modifier.padding(start = 12.dp)) {
-                                    MeaningOption(variant, variant == selected, busy, expanded = true, variant = true) {
-                                        choose(variant)
+                if (selected != null && !changingMeaning) TextButton(onClick = { changingMeaning = true }) { Text(stringResource(R.string.ui_change_meaning)) }
+                if ((selected == null || changingMeaning) && suggestions.size > top.size) {
+                    TextButton(onClick = { focus.clearFocus(); more = true }) { Text(stringResource(R.string.ui_more_meanings)) }
+                }
+                if (more) {
+                    AlertDialog(onDismissRequest = { more = false },
+                    title = { Text(stringResource(R.string.ui_choose_a_meaning)) },
+                    text = {
+                        LazyColumn(Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            groups.forEach { group ->
+                                item {
+                                    val sense = group.representative
+                                    MeaningOption(sense, sense == selected, busy, expanded = true) { choose(sense) }
+                                }
+                                items(group.variants) { variant ->
+                                    Box(Modifier.padding(start = 12.dp)) {
+                                        MeaningOption(variant, variant == selected, busy, expanded = true, variant = true) {
+                                            choose(variant)
+                                        }
                                     }
                                 }
                             }
                         }
+                    },
+                    confirmButton = { TextButton(onClick = { more = false }) { Text(stringResource(R.string.ui_close)) } })
+                }
+            }
+            Section {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+                    label = { Text(stringResource(R.string.ui_spanish_translation)) }, singleLine = true)
+                    if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
+                        TranslationAttribution()
+                    } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
+                        Text(stringResource(R.string.ui_translation_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
                     }
-                },
-                confirmButton = { TextButton(onClick = { more = false }) { Text(stringResource(R.string.ui_close)) } })
-        }
-    }
-    Section {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text(stringResource(R.string.ui_spanish_translation)) }, singleLine = true)
-        if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
-            TranslationAttribution()
-        } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
-            Text(stringResource(R.string.ui_translation_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
-        }
-    }
-    if (providerSense != null && providers != null) {
-        TextButton(onClick = { comparing = !comparing }) { Text(stringResource(R.string.ui_compare_translations)) }
-        if (comparing) {
-        selected?.spanish?.distinct()?.forEach { value ->
-            TextButton(onClick = { applyTranslation(value, providerSense.source, explicitly = true) }, enabled = !busy) {
-                Text("Use dictionary translation · $value")
-            }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TextButton(onClick = { focus.clearFocus(); requestGoogle(retry = googleResult?.isEmpty() == true) },
-                enabled = !busy && !providers.google.loading) { Text(stringResource(R.string.ui_translate_with_google)) }
-            TextButton(onClick = { focus.clearFocus(); requestNano(SenseRequest.Translation, retry = geminiResult?.isEmpty() == true) },
-                enabled = !busy && !providers.translation.loading) { Text(stringResource(R.string.ui_translate_with_gemini)) }
-        }
-        googleResult?.firstOrNull()?.let { value ->
-            TranslatedText(value, attributed = true)
-            TextButton(onClick = { applyTranslation(value, GOOGLE_TRANSLATION, explicitly = true) }, enabled = !busy) {
-                Text(stringResource(R.string.ui_use_google_translation))
-            }
-        }
-        geminiResult?.firstOrNull()?.let { value ->
-            Text(value)
-            TextButton(onClick = { applyTranslation(value, GEMINI_TRANSLATION, explicitly = true) }, enabled = !busy) {
-                Text(stringResource(R.string.ui_use_gemini_translation))
-            }
-        }
-        if (providers.google.loading || providers.translation.loading) Text(stringResource(R.string.ui_finding_translations))
-        else if (googleResult?.isEmpty() == true || geminiResult?.isEmpty() == true) {
-            Text(stringResource(R.string.ui_a_provider_returned_no_suggestion_try_again_or_enter_you),
-                style = MaterialTheme.typography.bodySmall)
-        }
-    }
-    }
-    }
-    var guideExpanded by rememberSaveable { mutableStateOf(false) }
-    Section {
-        TextButton(onClick = { guideExpanded = !guideExpanded }) { Text(stringResource(R.string.ui_usage_guide)) }
-        if (guideExpanded) {
-            if (selected != null && providers != null) {
-                UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) }, enabled = !busy,
-                onAddExample = { generated ->
-                    if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
-                        generatedExamples = (generatedExamples.lines().filter(String::isNotBlank) + generated)
-                            .joinToString("\n")
+                }
+                if (providerSense != null && providers != null) {
+                    TextButton(onClick = { comparing = !comparing }) { Text(stringResource(R.string.ui_compare_translations)) }
+                    if (comparing) {
+                        selected?.spanish?.distinct()?.forEach { value ->
+                            TextButton(onClick = { applyTranslation(value, providerSense.source, explicitly = true) }, enabled = !busy) {
+                                Text("Use dictionary translation · $value")
+                            }
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(onClick = { focus.clearFocus(); requestGoogle(retry = googleResult?.isEmpty() == true) },
+                            enabled = !busy && !providers.google.loading) { Text(stringResource(R.string.ui_translate_with_google)) }
+                            TextButton(onClick = { focus.clearFocus(); requestNano(SenseRequest.Translation, retry = geminiResult?.isEmpty() == true) },
+                            enabled = !busy && !providers.translation.loading) { Text(stringResource(R.string.ui_translate_with_gemini)) }
+                        }
+                        googleResult?.firstOrNull()?.let { value ->
+                            TranslatedText(value, attributed = true)
+                            TextButton(onClick = { applyTranslation(value, GOOGLE_TRANSLATION, explicitly = true) }, enabled = !busy) {
+                                Text(stringResource(R.string.ui_use_google_translation))
+                            }
+                        }
+                        geminiResult?.firstOrNull()?.let { value ->
+                            Text(value)
+                            TextButton(onClick = { applyTranslation(value, GEMINI_TRANSLATION, explicitly = true) }, enabled = !busy) {
+                                Text(stringResource(R.string.ui_use_gemini_translation))
+                            }
+                        }
+                        if (providers.google.loading || providers.translation.loading) Text(stringResource(R.string.ui_finding_translations))
+                        else if (googleResult?.isEmpty() == true || geminiResult?.isEmpty() == true) {
+                            Text(stringResource(R.string.ui_a_provider_returned_no_suggestion_try_again_or_enter_you),
+                            style = MaterialTheme.typography.bodySmall)
+                        }
                     }
-                })
+                }
             }
-            OutlinedTextField(if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() },
-                { usageNote = it; guideEdited = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_edit_guide)) })
-        }
-    }
+            var guideExpanded by rememberSaveable { mutableStateOf(false) }
+            Section {
+                TextButton(onClick = { guideExpanded = !guideExpanded }) { Text(stringResource(R.string.ui_usage_guide)) }
+                if (guideExpanded) {
+                    if (selected != null && providers != null) {
+                        UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) }, enabled = !busy,
+                        onAddExample = { generated ->
+                            if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
+                                generatedExamples = (generatedExamples.lines().filter(String::isNotBlank) + generated)
+                                .joinToString("\n")
+                            }
+                        })
+                    }
+                    OutlinedTextField(if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() },
+                    { usageNote = it; guideEdited = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_edit_guide)) })
+                }
+            }
 
-    Section {
-        TextButton(onClick = { focus.clearFocus(); details = true }) { Text(stringResource(R.string.ui_card_details)) }
-        Text(detailSummary(listOf(example, generatedExamples).filter(String::isNotBlank).joinToString("\n"), synonyms), style = MaterialTheme.typography.bodySmall)
-    }
-    if (original != null && !fromStudy) {
-        OutlinedButton(onClick = {
-            if (draft == original) onAnotherSense(original) else confirm = true
-        }, enabled = !busy) { Text(stringResource(R.string.ui_add_another_meaning)) }
-    }
-    }
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    if (model.failedId == id) Text(stringResource(R.string.ui_could_not_save_please_try_again),
-        color = MaterialTheme.colorScheme.error)
-    Button(onClick = { save(if (fromStudy) AfterSave.Study else AfterSave.Library) }, enabled = valid) { Text(if (original == null) "Save card" else "Save changes") }
-    if (original == null) {
-        OutlinedButton(onClick = { save(AfterSave.AnotherCard) }, enabled = valid) {
-            Text(stringResource(R.string.ui_save_and_add_another))
+            Section {
+                TextButton(onClick = { focus.clearFocus(); details = true }) { Text(stringResource(R.string.ui_card_details)) }
+                Text(detailSummary(listOf(example, generatedExamples).filter(String::isNotBlank).joinToString("\n"), synonyms), style = MaterialTheme.typography.bodySmall)
+            }
+            if (original != null && !fromStudy) {
+                OutlinedButton(onClick = {
+                    if (draft == original) onAnotherSense(original) else confirm = true
+                }, enabled = !busy) { Text(stringResource(R.string.ui_add_another_meaning)) }
+            }
         }
-    }
-    }
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (model.failedId == id) Text(stringResource(R.string.ui_could_not_save_please_try_again),
+            color = MaterialTheme.colorScheme.error)
+            Button(onClick = { save(if (fromStudy) AfterSave.Study else AfterSave.Library) }, enabled = valid) { Text(if (original == null) "Save card" else "Save changes") }
+            if (original == null) {
+                OutlinedButton(onClick = { save(AfterSave.AnotherCard) }, enabled = valid) {
+                    Text(stringResource(R.string.ui_save_and_add_another))
+                }
+            }
+        }
     }
     if (details) DetailPage("Card details", { details = false }) {
         Text("${english.trim()} · $spanish", style = MaterialTheme.typography.titleMedium)
         Section {
-    val dictionaryExamples = selected?.examples.orEmpty().filter(String::isNotBlank)
-    val examples = dictionaryExamples.ifEmpty { suggestedGuide?.examples.orEmpty() }.distinct()
-    if (examples.isNotEmpty()) {
-        SupportingSenseExample(examples, example, enabled = !busy,
-            onChoose = { choosingExample = true },
-            onUse = ::selectExample,
-            onRemove = { selectExample("") })
-        if (choosingExample && examples.size > 1) {
-            ExamplePicker(examples, example, onClose = { choosingExample = false }, onSelect = ::selectExample)
-        }
-    }
-    OutlinedTextField(example, { editValue(MeaningField.Example, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-        label = { Text(stringResource(R.string.ui_example)) }, supportingText = { Text(stringResource(R.string.ui_enter_one_example_per_line)) })
-
-        Text(stringResource(R.string.ui_word_class), style = MaterialTheme.typography.titleSmall)
-        if (editingCategory) {
-            OutlinedTextField(senseCategories, { editValue(MeaningField.Categories, it) }, Modifier.fillMaxWidth(),
-                enabled = !busy, label = { Text(stringResource(R.string.ui_word_classes)) })
-            TextButton(onClick = { editingCategory = false }) { Text(stringResource(R.string.ui_done)) }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val labels = commaSeparatedValues(senseCategories).map { categoryLabel(it.lowercase()) }
-                Text(labels.joinToString(" · ").ifBlank { "Unspecified" }, Modifier.weight(1f))
-                TextButton(onClick = { editingCategory = true }, enabled = !busy) { Text(stringResource(R.string.ui_edit_word_class)) }
+            val dictionaryExamples = selected?.examples.orEmpty().filter(String::isNotBlank)
+            val examples = dictionaryExamples.ifEmpty { suggestedGuide?.examples.orEmpty() }.distinct()
+            if (examples.isNotEmpty()) {
+                SupportingSenseExample(examples, example, enabled = !busy,
+                onChoose = { choosingExample = true },
+                onUse = ::selectExample,
+                onRemove = { selectExample("") })
+                if (choosingExample && examples.size > 1) {
+                    ExamplePicker(examples, example, onClose = { choosingExample = false }, onSelect = ::selectExample)
+                }
             }
-        }
+            OutlinedTextField(example, { editValue(MeaningField.Example, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text(stringResource(R.string.ui_example)) }, supportingText = { Text(stringResource(R.string.ui_enter_one_example_per_line)) })
+
+            Text(stringResource(R.string.ui_word_class), style = MaterialTheme.typography.titleSmall)
+            if (editingCategory) {
+                OutlinedTextField(senseCategories, { editValue(MeaningField.Categories, it) }, Modifier.fillMaxWidth(),
+                enabled = !busy, label = { Text(stringResource(R.string.ui_word_classes)) })
+                TextButton(onClick = { editingCategory = false }) { Text(stringResource(R.string.ui_done)) }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val labels = commaSeparatedValues(senseCategories).map { categoryLabel(it.lowercase()) }
+                    Text(labels.joinToString(" · ").ifBlank { "Unspecified" }, Modifier.weight(1f))
+                    TextButton(onClick = { editingCategory = true }, enabled = !busy) { Text(stringResource(R.string.ui_edit_word_class)) }
+                }
+            }
 
         }
         Section {
-    val dictionarySynonyms = selected?.synonymOptions.orEmpty().filter(String::isNotBlank)
-    val synonymOptions = (dictionarySynonyms + providers?.synonyms?.result.orEmpty()).distinctBy(::senseText)
-    if (synonymOptions.isNotEmpty()) {
-        Text(stringResource(R.string.ui_synonyms), style = MaterialTheme.typography.titleSmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val terms = commaSeparatedValues(synonyms).map(::senseText)
-            val visible = if (showAllSynonyms) synonymOptions else synonymOptions.take(6)
-            visible.forEach { term ->
-                val fromDictionary = term in dictionarySynonyms
-                FilterChip(selected = senseText(term) in terms, enabled = !busy,
-                    onClick = { toggleSynonym(term, if (fromDictionary) selected?.source.orEmpty() else GEMINI_SYNONYMS) },
-                    label = { Text(term) })
+            val dictionarySynonyms = selected?.synonymOptions.orEmpty().filter(String::isNotBlank)
+            val synonymOptions = (dictionarySynonyms + providers?.synonyms?.result.orEmpty()).distinctBy(::senseText)
+            if (synonymOptions.isNotEmpty()) {
+                Text(stringResource(R.string.ui_synonyms), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val terms = commaSeparatedValues(synonyms).map(::senseText)
+                    val visible = if (showAllSynonyms) synonymOptions else synonymOptions.take(6)
+                    visible.forEach { term ->
+                        val fromDictionary = term in dictionarySynonyms
+                        FilterChip(selected = senseText(term) in terms, enabled = !busy,
+                        onClick = { toggleSynonym(term, if (fromDictionary) selected?.source.orEmpty() else GEMINI_SYNONYMS) },
+                        label = { Text(term) })
+                    }
+                }
+                if (synonymOptions.any { it !in dictionarySynonyms }) {
+                    Text(stringResource(R.string.ui_synonyms_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
+                }
+                if (synonymOptions.size > 6) {
+                    TextButton(onClick = { showAllSynonyms = !showAllSynonyms }) {
+                        Text(if (showAllSynonyms) "Fewer synonyms" else "More synonyms")
+                    }
+                }
             }
-        }
-        if (synonymOptions.any { it !in dictionarySynonyms }) {
-            Text(stringResource(R.string.ui_synonyms_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
-        }
-        if (synonymOptions.size > 6) {
-            TextButton(onClick = { showAllSynonyms = !showAllSynonyms }) {
-                Text(if (showAllSynonyms) "Fewer synonyms" else "More synonyms")
+            if (providerSense != null && providers != null && providers.synonyms.result.isNullOrEmpty()) {
+                if (providers.synonyms.loading) Text(stringResource(R.string.ui_finding_synonyms))
+                else TextButton(onClick = { requestNano(SenseRequest.Synonyms, retry = true) }, enabled = !busy) {
+                    Text(stringResource(R.string.ui_suggest_synonyms_with_gemini))
+                }
             }
-        }
-    }
-    if (providerSense != null && providers != null && providers.synonyms.result.isNullOrEmpty()) {
-        if (providers.synonyms.loading) Text(stringResource(R.string.ui_finding_synonyms))
-        else TextButton(onClick = { requestNano(SenseRequest.Synonyms, retry = true) }, enabled = !busy) {
-            Text(stringResource(R.string.ui_suggest_synonyms_with_gemini))
-        }
-    }
-    Column {
-        OutlinedTextField(definition, { editValue(MeaningField.Definition, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text(stringResource(R.string.ui_english_definition)) })
-        OutlinedTextField(synonyms, { editValue(MeaningField.Synonyms, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text(stringResource(R.string.ui_synonyms_comma_separated)) })
+            Column {
+                OutlinedTextField(definition, { editValue(MeaningField.Definition, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+                label = { Text(stringResource(R.string.ui_english_definition)) })
+                OutlinedTextField(synonyms, { editValue(MeaningField.Synonyms, it) }, Modifier.fillMaxWidth(), enabled = !busy,
+                label = { Text(stringResource(R.string.ui_synonyms_comma_separated)) })
 
-    }
-    Text(stringResource(R.string.ui_tags), style = MaterialTheme.typography.titleMedium)
-    if (tags.isNotEmpty()) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            tags.forEach { label ->
-                InputChip(selected = true, enabled = !busy,
-                    onClick = { tags = ArrayList(tags - label) },
-                    label = { Text(label) }, trailingIcon = { Text("×") })
             }
-        }
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(pending, { pending = it }, Modifier.weight(1f), enabled = !busy,
-            label = { Text(stringResource(R.string.ui_new_tag)) }, singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { addPending(); focus.clearFocus() }))
-        TextButton(onClick = { addPending() }, enabled = pending.isNotBlank() && !busy) { Text(stringResource(R.string.ui_add)) }
-    }
-    val available = knownTags.filter { label -> tags.none { it.equals(label, ignoreCase = true) } }
-    if (available.isNotEmpty()) {
-        TagMenu("Choose existing tag", available, enabled = !busy) {
-            tags = ArrayList(tags + it)
-        }
-    }
+            Text(stringResource(R.string.ui_tags), style = MaterialTheme.typography.titleMedium)
+            if (tags.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    tags.forEach { label ->
+                        InputChip(selected = true, enabled = !busy,
+                        onClick = { tags = ArrayList(tags - label) },
+                        label = { Text(label) }, trailingIcon = { Text("×") })
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(pending, { pending = it }, Modifier.weight(1f), enabled = !busy,
+                label = { Text(stringResource(R.string.ui_new_tag)) }, singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { addPending(); focus.clearFocus() }))
+                TextButton(onClick = { addPending() }, enabled = pending.isNotBlank() && !busy) { Text(stringResource(R.string.ui_add)) }
+            }
+            val available = knownTags.filter { label -> tags.none { it.equals(label, ignoreCase = true) } }
+            if (available.isNotEmpty()) {
+                TagMenu("Choose existing tag", available, enabled = !busy) {
+                    tags = ArrayList(tags + it)
+                }
+            }
 
         }
         SavedUsageContent("", generatedExamples, onRemoveExample = { removed ->
             generatedExamples = generatedExamples.lines().filterNot { it == removed }.joinToString("\n")
         })
-    val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource, ipaSource,
+        val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource, ipaSource,
         *suggestions.map { it.source }.toTypedArray())
-    if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text(stringResource(R.string.ui_sources_and_licences)) }
-    if (showSources && sources.isNotEmpty()) {
-        val uriHandler = LocalUriHandler.current
-        AlertDialog(onDismissRequest = { showSources = false }, title = { Text(stringResource(R.string.ui_sources_and_licences)) },
+        if (sources.isNotEmpty()) TextButton(onClick = { showSources = true }) { Text(stringResource(R.string.ui_sources_and_licences)) }
+        if (showSources && sources.isNotEmpty()) {
+            val uriHandler = LocalUriHandler.current
+            AlertDialog(onDismissRequest = { showSources = false }, title = { Text(stringResource(R.string.ui_sources_and_licences)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     sources.lineSequence().filter { it.isNotBlank() }.distinct().forEach { line ->
@@ -659,12 +659,12 @@ internal fun CardEditor(
                     }
                     if (GOOGLE_TRANSLATION in sources) {
                         Text("This app may contain translations powered by Google. Google disclaims all warranties related to the translations, " +
-                            "express or implied, including warranties of accuracy, reliability, merchantability, " +
-                            "fitness for a particular purpose and non-infringement.")
+                        "express or implied, including warranties of accuracy, reliability, merchantability, " +
+                        "fitness for a particular purpose and non-infringement.")
                     }
                 }
             }, confirmButton = { TextButton(onClick = { showSources = false }) { Text(stringResource(R.string.ui_close)) } })
-    }
+        }
 
     }
     proposed?.let { suggestion ->

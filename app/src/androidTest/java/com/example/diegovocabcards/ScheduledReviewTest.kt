@@ -24,7 +24,8 @@ class ScheduledReviewTest {
     @get:Rule val compose = createComposeRule()
 
     private fun click(label: String) {
-        val node = compose.onNodeWithText(label)
+        compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onNode(hasText(label) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
         node.performClick()
     }
@@ -37,22 +38,22 @@ class ScheduledReviewTest {
             runBlocking { db.vocabulary().save("one", "fire", "fuego", "", "") }
             val model = VocabularyModel(app, db)
             compose.setContent { if (showing.value) VocabCardsApp(Appearance.Light, model) {} }
-            click("Repasar en ambos sentidos")
+            click("Start review")
             compose.onNodeWithText("fuego").assertIsDisplayed()
             compose.onNodeWithText("fire").assertDoesNotExist()
-            compose.onNodeWithText("Sin IPA").assertDoesNotExist()
-            click("Mostrar respuesta")
-            compose.onNodeWithText("Sin IPA").assertExists()
-            click("Bien")
-            compose.waitUntil(5000) { compose.onAllNodesWithText("Inglés → Español · Nueva").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("IPA unavailable").assertDoesNotExist()
+            click("Show answer")
+            compose.onNodeWithText("IPA unavailable").assertExists()
+            click("Good")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("English → Spanish · 2 of 2").fetchSemanticsNodes().isNotEmpty() }
             val first = runBlocking { db.reviews().latest("one", Direction.ES_EN) }
             assertNotNull(first)
             assertNull(runBlocking { db.reviews().latest("one", Direction.EN_ES) })
             compose.onNodeWithText("fuego").assertDoesNotExist()
-            click("Mostrar respuesta")
-            click("Fácil")
-            compose.waitUntil(5000) { compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Calificaciones guardadas: 2").assertExists()
+            click("Show answer")
+            click("Easy")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Ratings saved: 2").assertExists()
             assertEquals(first, runBlocking { db.reviews().latest("one", Direction.ES_EN) })
             assertEquals(io.github.openspacedrepetition.Rating.EASY, runBlocking { db.reviews().latest("one", Direction.EN_ES) }!!.rating)
         } finally {
@@ -82,53 +83,53 @@ class ScheduledReviewTest {
                         clock = clock) {}
                 }
             }
-            click("Opciones avanzadas")
-            click("Español → Inglés")
+            click("Advanced options")
+            click("Spanish → English")
             compose.onNodeWithText("correr").assertIsDisplayed()
             compose.onNodeWithText("run").assertDoesNotExist()
             compose.onNodeWithText(example).assertDoesNotExist()
-            compose.onNodeWithText("Bien").assertDoesNotExist()
-            click("Mostrar respuesta")
+            compose.onNodeWithText("Good").assertDoesNotExist()
+            click("Show answer")
             compose.onNodeWithText(example).assertExists()
             compose.onNodeWithText("8 min").assertExists()
-            compose.onNodeWithText("12 días").assertExists()
+            compose.onNodeWithText("12 days").assertExists()
             db.openHelper.writableDatabase.execSQL(
                 "CREATE TEMP TRIGGER reject_grade BEFORE INSERT ON ReviewEvent BEGIN SELECT RAISE(ABORT, 'test'); END")
-            click("Bien")
+            click("Good")
             compose.waitUntil(5000) {
-                compose.onAllNodesWithText("No se pudo guardar", substring = true).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("Could not save", substring = true).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("run").assertExists()
             assertNull(runBlocking { db.reviews().latest("test", Direction.ES_EN) })
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER reject_grade")
             compose.runOnIdle { clock.time = start.plusSeconds(20) }
             compose.onNodeWithText("8 min").assertExists()
-            click("Bien")
+            click("Good")
             compose.waitUntil(5000) {
-                compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Calificaciones guardadas: 1").assertExists()
-            click("Volver a Inicio")
-            click("Opciones avanzadas")
-            compose.onNodeWithText("Español → Inglés").assertIsNotEnabled()
-            compose.onNodeWithText("Próximo repaso", substring = true).assertExists()
-            click("Repasar")
-            click("Opciones avanzadas")
-            click("Inglés → Español")
+            compose.onNodeWithText("Ratings saved: 1").assertExists()
+            click("Back to Home")
+            click("Advanced options")
+            compose.onNode(hasText("Spanish → English") and hasClickAction()).assertIsNotEnabled()
+            compose.onNodeWithText("Next review", substring = true).assertExists()
+            click("Review")
+            click("Advanced options")
+            click("English → Spanish")
             compose.onNodeWithText("run").assertIsDisplayed()
             compose.onNodeWithText("correr").assertDoesNotExist()
-            click("Mostrar respuesta")
-            click("Fácil")
+            click("Show answer")
+            click("Easy")
             compose.waitUntil(5000) {
-                compose.onAllNodesWithText("Repaso terminado").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithContentDescription("Volver").performClick()
-            click("Práctica manual sin calificar")
-            click("Español → Inglés")
-            click("Iniciar práctica")
-            click("Mostrar respuesta")
-            click("Siguiente")
-            compose.onNodeWithText("Práctica terminada").assertExists()
+            compose.onNodeWithContentDescription("Back").performClick()
+            click("Manual practice")
+            click("Spanish → English")
+            click("Start practice")
+            click("Show answer")
+            click("Next")
+            compose.onNodeWithText("Practice complete").assertExists()
             val schedules = runBlocking { db.reviews().schedules().first() }
             assertEquals(2, schedules.size)
             val spanish = schedules.single { it.direction == Direction.ES_EN }

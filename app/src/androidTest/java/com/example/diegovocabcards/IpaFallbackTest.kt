@@ -22,7 +22,7 @@ import org.junit.Test
 class IpaFallbackTest {
     @get:Rule val compose = createComposeRule()
     private val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
-    private val ipa get() = compose.onNodeWithText("IPA")
+    private val ipa get() = compose.onNodeWithText("Pronunciation (IPA)")
 
     @Test fun dictionaryPronunciationTakesPriorityOverNano() = withDb { db ->
         val word = Suggestion("To move on foot.", "verb", "fixture",
@@ -54,13 +54,15 @@ class IpaFallbackTest {
                 }
             }
             waitFor("/get ˈfaɪəd/")
-            tap("Fuente y licencia")
-            compose.onNodeWithText(GEMINI_IPA).assertExists()
-            tap("Cerrar")
-            compose.onNodeWithText("Traducción al español").performScrollTo().performTextInput("ser despedido")
+            tap("Card details")
+            tap("Sources and licences")
+            compose.onNodeWithText("Suggested by Gemini").assertExists()
+            tap("Close")
+            tap("Done")
+            compose.onNodeWithText("Spanish translation").performScrollTo().performTextInput("ser despedido")
             ipa.performScrollTo()
             captureEmulator("ipa-gemini-editor-claro.png")
-            tap("Guardar")
+            tap("Save card")
             compose.waitUntil(5000) { editorModel.saved != null }
             compose.runOnIdle {
                 assertEquals(listOf("get fired"), requests.map { it.expression })
@@ -75,11 +77,11 @@ class IpaFallbackTest {
             assertEquals(GEMINI_IPA, saved.ipaSource)
             val reopened = VocabularyModel(app, db)
             compose.runOnIdle { reviewModel = reopened; showing = true }
-            waitFor("Repasar en ambos sentidos")
-            tap("Repasar en ambos sentidos")
-            waitFor("Mostrar respuesta")
+            waitFor("Start review")
+            tap("Start review")
+            waitFor("Show answer")
             compose.onNodeWithText("/get ˈfaɪəd/").assertDoesNotExist()
-            tap("Mostrar respuesta")
+            tap("Show answer")
             compose.onNodeWithText("/get ˈfaɪəd/").assertExists()
         } finally {
             compose.runOnIdle { showing = false }
@@ -106,12 +108,14 @@ class IpaFallbackTest {
             compose.runOnIdle { assertTrue(requests.isEmpty()) }
             tap(metal.definition)
             compose.waitUntil(5000) { requests.contains(metal.definition) }
+            tap("Change meaning")
             tap(guide.definition)
             metalAnswer.complete("/led/")
             compose.waitUntil(5000) { requests.contains(guide.definition) }
             compose.onNodeWithText("/led/").assertDoesNotExist()
             guideAnswer.complete("/liːd/")
             waitFor("/liːd/")
+            tap("Change meaning")
             tap(metal.definition)
             waitFor("/led/")
             compose.runOnIdle { assertEquals(listOf(metal.definition, guide.definition), requests) }
@@ -143,7 +147,7 @@ class IpaFallbackTest {
             answer.complete("/teɪk ˈɒf/")
             compose.waitForIdle()
             compose.onNodeWithText("/teɪk ˈɒf/").assertDoesNotExist()
-            tap("Guardar")
+            tap("Save changes")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("", saved.ipa)

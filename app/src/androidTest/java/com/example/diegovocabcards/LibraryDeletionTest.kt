@@ -33,23 +33,25 @@ class LibraryDeletionTest {
             }
             val model = VocabularyModel(app, db)
             compose.setContent { VocabCardsApp(Appearance.Light, model) {} }
-            compose.onNodeWithText("Biblioteca").performClick()
-            compose.onNodeWithContentDescription("Borrar acepción").assertDoesNotExist()
+            compose.onNodeWithText("Library").performClick()
+            compose.onNodeWithContentDescription("Delete meaning").assertDoesNotExist()
             compose.onNodeWithText("despedir").performTouchInput { swipeLeft() }
-            val trash = compose.onNodeWithContentDescription("Borrar acepción")
+            val trash = compose.onNodeWithContentDescription("Delete meaning")
             trash.assertIsDisplayed()
             captureEmulator("biblioteca-borrar-claro.png")
             db.openHelper.writableDatabase.execSQL(
                 "CREATE TEMP TRIGGER prevent_delete BEFORE DELETE ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
             )
             trash.performClick()
+            compose.onNodeWithText("Delete").performClick()
             compose.waitUntil(5000) {
-                compose.onAllNodesWithText("No se pudo borrar la tarjeta.", substring = true).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("Could not delete the card.", substring = true).fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(2, runBlocking { db.vocabulary().cards().first().size })
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER prevent_delete")
             val actions = compose.onNodeWithText("despedir").fetchSemanticsNode().config[SemanticsActions.CustomActions]
-            compose.runOnIdle { check(actions.single { it.label == "Borrar acepción" }.action()) }
+            compose.runOnIdle { check(actions.single { it.label == "Delete meaning" }.action()) }
+            compose.onNodeWithText("Delete").performClick()
             compose.waitUntil(5000) { compose.onAllNodesWithText("despedir").fetchSemanticsNodes().isEmpty() }
             compose.onNodeWithText("fuego").assertIsDisplayed()
             val kept = runBlocking { db.vocabulary().cards().first().single() }

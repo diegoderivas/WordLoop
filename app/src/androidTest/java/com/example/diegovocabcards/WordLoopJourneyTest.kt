@@ -35,7 +35,7 @@ class WordLoopJourneyTest {
         fun waitFor(value: String) = compose.waitUntil(10000) {
             compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty()
         }
-        fun shot(screen: String) = captureEmulator("wordloop-$screen-$mode.png")
+        fun shot(screen: String) { compose.waitForIdle(); captureEmulator("wordloop-$screen-$mode.png") }
         try {
             assertEquals("WordLoop", app.packageManager.getApplicationLabel(app.applicationInfo).toString())
             runBlocking {
@@ -46,6 +46,15 @@ class WordLoopJourneyTest {
             }
             compose.setContent {
                 if (running.value) DiegoVocabCardsTheme(darkTheme = dark) {
+                    val view = androidx.compose.ui.platform.LocalView.current
+                    SideEffect {
+                        (view.context as? android.app.Activity)?.window?.let { window ->
+                            androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+                                isAppearanceLightStatusBars = !dark
+                                isAppearanceLightNavigationBars = !dark
+                            }
+                        }
+                    }
                     VocabCardsApp(if (dark) Appearance.Dark else Appearance.Light, model,
                         dictionaryLookup = { if (it == "bloom") listOf(bloom) else emptyList() },
                         guideGenerator = UsageNoteGenerator { _, _, _ -> UsageNoteResult.Unavailable }) {}

@@ -132,7 +132,7 @@ internal fun VocabCardsApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Surface(color = MaterialTheme.colorScheme.surface) {
+            Surface(color = MaterialTheme.colorScheme.background) {
                 Row(
                     Modifier.fillMaxWidth().windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
@@ -188,7 +188,7 @@ internal fun VocabCardsApp(
                             Text(stringResource(R.string.ui_add_card))
                         }
                     }
-                    Screen.Library -> {
+                    Screen.Library -> sessionState.SaveableStateProvider(Screen.Library.name) {
                         var progressId by rememberSaveable { mutableStateOf<String?>(null) }
                         progressId?.let { ReviewDetails(it, model.reviews) { progressId = null } }
                         Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },

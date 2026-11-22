@@ -9,7 +9,8 @@ internal fun captureEmulator(name: String) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val directory = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
     // Wait for SurfaceFlinger to present the Compose frame already checked by the test.
-    android.os.SystemClock.sleep(500)
+    instrumentation.waitForIdleSync()
+    android.os.SystemClock.sleep(1200)
     val automation = if (android.os.Build.VERSION.SDK_INT >= 31) {
         instrumentation.getUiAutomation(android.app.UiAutomation.FLAG_DONT_USE_ACCESSIBILITY)
     } else {

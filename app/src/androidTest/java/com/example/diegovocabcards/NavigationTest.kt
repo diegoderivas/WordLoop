@@ -16,17 +16,17 @@ class NavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun openSectionsAndRestoreSettings() {
-        compose.onNode(hasText("Biblioteca") and hasClickAction()).performClick().assertIsSelected()
+        compose.onNode(hasText("Library") and hasClickAction()).performClick().assertIsSelected()
         pressBack()
-        compose.onNodeWithText("Inicio").assertIsSelected()
-        compose.onNodeWithText("Añadir tarjeta").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Volver").performClick()
-        compose.onNode(hasText("Repasar") and hasClickAction()).performClick().assertIsSelected()
-        compose.onNodeWithContentDescription("Configuración").performClick()
-        compose.onNodeWithText("Oscuro").performScrollTo().performClick()
+        compose.onNode(hasText("Home") and hasClickAction()).assertIsSelected()
+        compose.onNodeWithText("Add card").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNode(hasText("Review") and hasClickAction()).performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Dark").performScrollTo().performClick()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithText("Oscuro").performScrollTo().assertIsSelected()
-        compose.onNodeWithText("Claro").performClick().assertIsSelected()
-        compose.onNodeWithText("Automático (seguir al teléfono)").performClick().assertIsSelected()
+        compose.onNodeWithText("Dark").performScrollTo().assertIsSelected()
+        compose.onNodeWithText("Light").performClick().assertIsSelected()
+        compose.onNodeWithText("System").performClick().assertIsSelected()
     }
 }

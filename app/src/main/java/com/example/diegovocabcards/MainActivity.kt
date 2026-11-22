@@ -14,6 +14,12 @@ import androidx.core.view.WindowCompat
 import com.example.diegovocabcards.ui.theme.DiegoVocabCardsTheme
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) {
+        val configuration = android.content.res.Configuration(base.resources.configuration)
+        configuration.setLocale(java.util.Locale.UK)
+        super.attachBaseContext(base.createConfigurationContext(configuration))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

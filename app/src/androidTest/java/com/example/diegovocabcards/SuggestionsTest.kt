@@ -40,7 +40,7 @@ class SuggestionsTest {
                 }
             }
             compose.waitUntil(5000) { compose.onAllNodesWithText("/ˈɹɛkɔːd/").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Guardar").performScrollTo().performClick()
+            compose.onNodeWithText("Save changes").performClick()
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("fixture", saved.ipaSource)
@@ -65,7 +65,7 @@ class SuggestionsTest {
                         usageNotes = { _, _, _ -> UsageNoteResult.Unavailable }) {}
                 }
             }
-            val ipa = compose.onNodeWithText("IPA")
+            val ipa = compose.onNodeWithText("Pronunciation (IPA)")
             ipa.performScrollTo().performTextInput("faɪə")
             val meaning = Suggestion("Flames and heat.", "noun", "fixture",
                 pronunciation = DictionaryPronunciation("/faɪɹ/", "fixture"))
@@ -75,7 +75,7 @@ class SuggestionsTest {
             }
             compose.onNodeWithText(meaning.definition).performScrollTo().performClick()
             ipa.assertTextContains("faɪə")
-            compose.onNodeWithText("Guardar").performScrollTo().performClick()
+            compose.onNodeWithText("Save changes").performClick()
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals(original.id, saved.id)
@@ -84,6 +84,7 @@ class SuggestionsTest {
             assertEquals(MANUAL_IPA, saved.ipaSource)
         } finally {
             lookup.cancel()
+            disposeTestContent()
             db.close()
         }
     }
@@ -109,13 +110,17 @@ class SuggestionsTest {
                         }, usageNotes = { _, _, _ -> UsageNoteResult.Unavailable }) {}
                 }
             }
-            val spanish = compose.onNodeWithText("Traducción al español")
+            val spanish = compose.onNodeWithText("Spanish translation")
             fun waitText(value: String) = compose.waitUntil(5000) {
                 compose.onAllNodes(hasSetTextAction() and hasText(value)).fetchSemanticsNodes().isNotEmpty()
             }
             compose.waitUntil(5000) { compose.onAllNodesWithText(senses.first().definition).fetchSemanticsNodes().isNotEmpty() }
-            fun choose(i: Int) = compose.onNodeWithText(senses[i].definition).performScrollTo().performClick()
+            fun choose(i: Int) {
+                if (i != 0) compose.onNodeWithText("Change meaning").performScrollTo().performClick()
+                compose.onNodeWithText(senses[i].definition).performScrollTo().performClick()
+            }
             choose(0)
+            compose.onNodeWithText("Compare translations").performScrollTo().performClick()
             google.getValue(senses[0]).complete("incendio")
             waitText("incendio")
             nano.getValue(senses[0]).complete("llamas")
@@ -124,17 +129,18 @@ class SuggestionsTest {
             nano.getValue(senses[1]).complete("destituir")
             waitText("destituir")
             google.getValue(senses[1]).complete("echar")
-            compose.waitUntil { compose.onAllNodesWithText("Usar traducción de Google").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil { compose.onAllNodesWithText("Use Google translation").fetchSemanticsNodes().isNotEmpty() }
             spanish.assertTextContains("destituir")
             choose(2)
             google.getValue(senses[2]).complete("disparar")
             waitText("disparar")
             spanish.performScrollTo().performTextClearance()
             nano.getValue(senses[2]).complete("hacer fuego")
-            compose.waitUntil { compose.onAllNodesWithText("Usar traducción de Gemini").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Guardar").assertIsNotEnabled()
+            compose.waitUntil { compose.onAllNodesWithText("Use Gemini translation").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Save card").assertIsNotEnabled()
         } finally {
             (google.values + nano.values).forEach { it.cancel() }
+            disposeTestContent()
             db.close()
         }
     }
@@ -157,48 +163,56 @@ class SuggestionsTest {
                     }) {}
                 }
             }
-            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            fun tap(label: String) = compose.tapControl(label)
             fun waitFor(label: String, substring: Boolean = false) {
                 compose.waitUntil(5000) {
                     compose.onAllNodesWithText(label, substring = substring).fetchSemanticsNodes().isNotEmpty()
                 }
             }
 
-            val english = compose.onNodeWithText("Palabra o expresión en inglés")
+            val english = compose.onNodeWithText("Headword")
             english.performTextInput("hire")
             waitFor(work.definition)
             compose.onAllNodesWithText(work.definition).assertCountEquals(1)
             compose.onNodeWithText("Payment").assertDoesNotExist()
-            compose.onNodeWithText("Ver más significados").assertExists()
+            compose.onNodeWithText("More meanings").assertExists()
             tap(work.definition)
-            compose.onNodeWithText("Elegí un ejemplo").assertExists()
+            tap("Card details")
+            tap("Choose another")
+            compose.onNodeWithText("Choose an example").assertExists()
             compose.onNodeWithText("We hired more staff.").performClick()
             compose.onNodeWithText("We hired more staff.").assertExists()
-            compose.onNodeWithText("employ").performScrollTo().assertIsNotSelected().performClick().assertIsSelected()
-            compose.onNodeWithText("employ").performClick().assertIsNotSelected()
-            compose.onNodeWithText("Categoría gramatical").assertExists()
-            tap("Elegir ejemplo")
-            compose.onNodeWithText("Continuar sin ejemplo").performClick()
+            compose.onNode(hasText("employ") and isSelectable()).performScrollTo().assertIsNotSelected().performClick().assertIsSelected()
+            compose.onNode(hasText("employ") and isSelectable()).performClick().assertIsNotSelected()
+            compose.onNodeWithText("Word class").assertExists()
+            tap("Choose another")
+            compose.onNodeWithText("Continue without an example").performClick()
             compose.onNodeWithText("We hired more staff.").assertDoesNotExist()
+            tap("Done")
+            tap("Change meaning")
             tap(rent.definition)
-            compose.onNodeWithText("Conservar mis campos").performClick()
-            compose.onNodeWithText("Ejemplo en inglés (opcional)").assertTextContains("")
-            compose.onNodeWithText("employ").assertDoesNotExist()
+            compose.onNodeWithText("Keep my edits").performClick()
+            tap("Card details")
+            compose.onNodeWithText("Example").assertTextContains("")
+            compose.onNode(hasText("employ") and isSelectable()).assertDoesNotExist()
             compose.onNodeWithText("rent").assertExists()
+            tap("Done")
+            tap("Change meaning")
             tap(incomplete.definition)
             compose.onNodeWithText("They hired a van.").assertDoesNotExist()
             compose.onNodeWithText("rent").assertDoesNotExist()
-            compose.onNodeWithText("Guardar").assertIsNotEnabled()
+            compose.onNodeWithText("Save card").assertIsNotEnabled()
             english.performScrollTo().performTextReplacement("offline")
-            waitFor("No se pudo consultar", substring = true)
-            compose.onNodeWithText("Traducción al español").performScrollTo().performTextInput("sin conexión")
-            tap("Guardar")
+            waitFor("Lookup unavailable", substring = true)
+            compose.onNodeWithText("Spanish translation").performScrollTo().performTextInput("sin conexión")
+            tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("sin conexión", saved.spanish)
             assertEquals("", saved.definition)
             assertEquals("", saved.source)
         } finally {
+            disposeTestContent()
             db.close()
         }
     }
@@ -230,14 +244,17 @@ class SuggestionsTest {
                     ) {}
                 }
             }
-            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            fun tap(label: String) = compose.tapControl(label)
             compose.waitUntil(5000) { compose.onAllNodesWithText(removal.definition).fetchSemanticsNodes().isNotEmpty() }
             tap(removal.definition)
-            compose.onNodeWithText("Traducir con Google").assertExists()
+            tap("Compare translations")
+            compose.onNodeWithText("Translate with Google").assertExists()
+            tap("Change meaning")
             tap(flight.definition)
             compose.waitUntil(5000) { firstStarted.isCompleted }
+            tap("Change meaning")
             tap(breakTime.definition)
-            val spanish = compose.onNodeWithText("Traducción al español")
+            val spanish = compose.onNodeWithText("Spanish translation")
             spanish.performScrollTo().performTextReplacement("mi corrección")
             secondResult.complete("tomarse un descanso")
             firstResult.complete("despegar")
@@ -246,12 +263,14 @@ class SuggestionsTest {
             }
             compose.onNodeWithText("despegar").assertDoesNotExist()
             spanish.assertTextContains("mi corrección")
+            tap("Change meaning")
             tap(flight.definition)
+            tap("Change meaning")
             tap(breakTime.definition)
             spanish.assertTextContains("mi corrección")
             assertEquals(3, googleCalls)
-            tap("Usar traducción de Google")
-            tap("Guardar")
+            tap("Use Google translation")
+            tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("tomarse un descanso", saved.spanish)
@@ -260,6 +279,7 @@ class SuggestionsTest {
         } finally {
             compose.runOnIdle { showing.value = false }
             compose.waitForIdle()
+            disposeTestContent()
             db.close()
         }
     }
@@ -293,49 +313,52 @@ class SuggestionsTest {
                         }) {}
                 }
             }
-            fun tap(label: String) = compose.onNodeWithText(label).performScrollTo().performClick()
+            fun tap(label: String) = compose.tapControl(label)
             fun waitFor(label: String) = compose.waitUntil(5000) {
                 compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
             }
-            val spanish = compose.onNodeWithText("Traducción al español")
+            val spanish = compose.onNodeWithText("Spanish translation")
             waitFor(flame.definition)
             tap(flame.definition)
-            compose.onNodeWithText("Sugerir sinónimos con Gemini").assertDoesNotExist()
+            tap("Compare translations")
+            compose.onNodeWithText("Suggest synonyms with Gemini").assertDoesNotExist()
             compose.waitUntil(5000) { started.isCompleted }
+            tap("Change meaning")
             tap(dismiss.definition)
             delayed.complete("llama")
             spanish.performScrollTo().performTextReplacement("mi traducción")
-            tap("Traducir con Google")
-            tap("Traducir con Gemini")
+            tap("Translate with Google")
+            tap("Translate with Gemini")
             waitFor("destituir")
             compose.onNodeWithText("llama").assertDoesNotExist()
             compose.onNodeWithText("echar").assertExists()
-            compose.onNodeWithText("Usar del diccionario · despedir").assertExists()
+            compose.onNodeWithText("Use dictionary translation · despedir").assertExists()
             spanish.assertTextContains("mi traducción")
             spanish.performScrollTo().performTouchInput { click() }
             captureEmulator("autocompletado-editor-teclado-claro.png")
-            compose.onNodeWithText("Usar traducción de Gemini").performScrollTo()
+            compose.onNodeWithText("Use Gemini translation").performScrollTo()
             captureEmulator("editor-propuestas-claro.png")
-            tap("Usar traducción de Google")
-            tap("Usar traducción de Gemini")
+            tap("Use Google translation")
+            tap("Use Gemini translation")
             spanish.assertTextContains("destituir")
+            tap("Card details")
             waitFor("sack")
             tap("sack")
-            tap("Detalles opcionales")
-            compose.onNodeWithText("Sinónimos (separados por comas)").assertTextContains("sack")
-            tap("Guardar")
+            compose.onNodeWithText("Synonyms (comma-separated)").assertTextContains("sack")
+            tap("Done")
+            tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("destituir", saved.spanish)
             assertTrue(GEMINI_TRANSLATION in saved.source && GOOGLE_TRANSLATION !in saved.source)
             assertTrue(GEMINI_SYNONYMS in saved.source)
             compose.runOnIdle { model.acknowledgeSave() }
-            compose.onNodeWithText("Palabra o expresión en inglés").performScrollTo().performTextReplacement("get fired")
+            compose.onNodeWithText("Headword").performScrollTo().performTextReplacement("get fired")
             waitFor(dismissed.definition)
             tap(dismissed.definition)
-            compose.onNodeWithText("Conservar mis campos").performClick()
-            tap("Traducir con Gemini")
-            tap("Usar traducción de Gemini")
+            compose.onNodeWithText("Keep my edits").performClick()
+            tap("Translate with Gemini")
+            tap("Use Gemini translation")
             spanish.assertTextContains("ser despedido")
         } finally { db.close() }
     }
@@ -358,28 +381,32 @@ class SuggestionsTest {
             }
         }
         try {
-            compose.onNodeWithText("Palabra o expresión en inglés").performTextInput("run")
+            compose.onNodeWithText("Headword").performTextInput("run")
             compose.waitUntil(5000) { started.get() }
-            compose.onNodeWithText("Palabra o expresión en inglés").performTextReplacement("look up")
+            compose.onNodeWithText("Headword").performTextReplacement("look up")
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("Definition for look up").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Definition for run").assertDoesNotExist()
-            compose.onNodeWithText("Detalles opcionales").performScrollTo().performClick()
-            compose.onNodeWithText("Definición en inglés").performScrollTo().performTextInput("My own definition")
+            compose.onNodeWithText("Card details").performScrollTo().performClick()
+            compose.onNodeWithText("English definition").performScrollTo().performTextInput("My own definition")
+            compose.onNodeWithText("Done").performClick()
             compose.onNodeWithText("Definition for look up").performScrollTo().performClick()
-            compose.onNodeWithText("Conservar mis campos").performClick()
+            compose.onNodeWithText("Keep my edits").performClick()
+            compose.onNodeWithText("Card details").performScrollTo().performClick()
             compose.onNodeWithText("My own definition").assertExists()
+            compose.onNodeWithText("Done").performClick()
             compose.onNodeWithText("Definition for look up").performScrollTo().performClick()
-            compose.onNodeWithText("Usar sugerencia").performClick()
-            compose.onNodeWithText("Traducción al español").performScrollTo().performTextInput("buscar")
-            compose.onNodeWithText("Guardar").performScrollTo().performClick()
+            compose.onNodeWithText("Use suggestion").performClick()
+            compose.onNodeWithText("Spanish translation").performScrollTo().performTextInput("buscar")
+            compose.onNodeWithText("Save card").performClick()
             compose.waitUntil(5000) { model.saved != null }
             val card = runBlocking { db.vocabulary().cards().first().single() }
             assertEquals("Definition for look up", card.definition)
             assertEquals("Example for look up", card.example)
             assertTrue(card.source.contains("TEST DATA"))
         } finally {
+            disposeTestContent()
             db.close()
         }
     }

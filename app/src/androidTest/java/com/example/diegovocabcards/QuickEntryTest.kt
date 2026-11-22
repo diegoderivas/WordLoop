@@ -16,7 +16,8 @@ class QuickEntryTest {
     @get:Rule val compose = createComposeRule()
 
     private fun click(text: String) {
-        val node = compose.onNodeWithText(text)
+        compose.waitUntil(10000) { compose.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onNode(hasText(text) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
         node.performClick()
     }
@@ -31,32 +32,38 @@ class QuickEntryTest {
             runBlocking { dao.save("seed", "hello", "hola", "", "diario") }
             val model = VocabularyModel(app, db)
             compose.setContent { VocabCardsApp(Appearance.System, model) {} }
-            click("Biblioteca")
-            click("Añadir tarjeta")
+            click("Library")
+            click("Add card")
             val terms = listOf("brush up on", "look up", "run")
             val meanings = listOf("refrescar", "buscar", "correr")
             for (i in terms.indices) {
-                compose.onNodeWithText("Guardar").assertIsNotEnabled()
-                enter("Palabra o expresión en inglés", terms[i])
-                enter("Traducción al español", meanings[i])
+                compose.onNodeWithText("Save card").assertIsNotEnabled()
+                enter("Headword", terms[i])
+                enter("Spanish translation", meanings[i])
                 if (i == 0) {
-                    enter("Ejemplo en inglés (opcional)", "I brush up on my English.")
-                    enter("Nueva etiqueta", "personal")
+                    click("Card details")
+                    enter("Example", "I brush up on my English.")
+                    enter("New tag", "personal")
+                    click("Done")
                     db.openHelper.writableDatabase.execSQL(
                         "CREATE TEMP TRIGGER reject_save BEFORE INSERT ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
                     )
-                    click("Guardar y añadir otra")
+                    click("Save and add another")
                     compose.waitUntil(5000) { model.failedId != null }
                     compose.onNodeWithText("refrescar").assertExists()
+                    click("Card details")
                     compose.onNodeWithText("personal").assertExists()
+                    click("Done")
                     db.openHelper.writableDatabase.execSQL("DROP TRIGGER reject_save")
                 }
                 if (i == 1) {
+                    click("Card details")
                     compose.onNodeWithText("I brush up on my English.").assertDoesNotExist()
                     compose.onNodeWithText("personal").assertExists()
                     click("diario")
+                    click("Done")
                 }
-                click(if (i == terms.lastIndex) "Guardar" else "Guardar y añadir otra")
+                click(if (i == terms.lastIndex) "Save card" else "Save and add another")
                 compose.waitUntil(5000) { !model.saving && model.saved == null }
             }
             compose.onNodeWithText("correr").assertExists()

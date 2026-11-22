@@ -29,7 +29,6 @@ internal fun SupportingSenseExample(
 ) {
     val recommended = examples.first()
     Column {
-        Text(stringResource(R.string.ui_suggested_example), style = MaterialTheme.typography.titleSmall)
         if (current != recommended) Text(recommended, style = MaterialTheme.typography.bodyMedium)
         if (examples.size > 1) {
             TextButton(onClick = onChoose, enabled = enabled) { Text(stringResource(R.string.ui_choose_another)) }

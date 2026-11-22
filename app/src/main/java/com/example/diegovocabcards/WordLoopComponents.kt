@@ -40,6 +40,16 @@ internal fun detailSummary(example: String, synonyms: String): String {
 internal fun DetailPage(title: String, onDone: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+            val view = androidx.compose.ui.platform.LocalView.current
+            val darkIcons = androidx.compose.material3.MaterialTheme.colorScheme.background == androidx.compose.ui.graphics.Color(0xFFF6F8FF)
+            androidx.compose.runtime.SideEffect {
+                (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window?.let { window ->
+                    androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = darkIcons
+                        isAppearanceLightNavigationBars = darkIcons
+                    }
+                }
+            }
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, style = MaterialTheme.typography.headlineMedium)

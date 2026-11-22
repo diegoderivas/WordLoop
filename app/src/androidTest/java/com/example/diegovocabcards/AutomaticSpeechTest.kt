@@ -29,15 +29,15 @@ class AutomaticSpeechTest {
                 VoiceOptions("en-GB") { selections.add(it) }
             }
         }
-        compose.onNodeWithText("Elegir voz inglesa").performClick()
+        compose.onNodeWithText("English voice").performClick()
         for (voice in player.voices) {
-            compose.onNodeWithContentDescription("Probar voz ${voice.name}").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Preview ${voice.name}").performScrollTo().performClick()
         }
         compose.runOnIdle {
             assertEquals(listOf("en-GB", "en-US", "en-AU"), samples)
             assertEquals(emptyList<String>(), selections)
         }
-        compose.onNodeWithText("Australiana · en-AU").performScrollTo().performClick()
+        compose.onNodeWithText("Australian · en-AU").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("en-AU"), selections) }
     }
 

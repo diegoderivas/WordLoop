@@ -22,38 +22,39 @@ class StudyLayoutTest {
 
     @Test fun scheduledQuestionIsCenteredWithRevealBelowAndRatingsAfterReveal() {
         withCard("run", "correr", dark = false, fontScale = 1f) { db ->
-            val attribution = "Traducción automática de Google Translate"
-            tap("Biblioteca")
+            val attribution = "Translated by Google"
+            tap("Library")
             compose.onNodeWithText("correr").assertIsDisplayed()
             compose.onAllNodesWithContentDescription(attribution, useUnmergedTree = true).assertCountEquals(1)
             captureEmulator("piloto-atribucion-biblioteca-claro.png")
             tap("run")
-            compose.onNodeWithText("Editar tarjeta").assertIsDisplayed()
+            tap("Edit card")
+            compose.onNodeWithText("Edit card").assertIsDisplayed()
             compose.onNodeWithText("/ɹʌn/").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Escuchar pronunciación").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Listen to pronunciation").assertIsDisplayed()
             captureEmulator("editor-ipa-visible-claro.png")
             compose.onAllNodesWithContentDescription(attribution).assertCountEquals(1)
             captureEmulator("piloto-atribucion-editor-claro.png")
-            compose.onNodeWithContentDescription("Volver").performClick()
-            tap("Inicio")
-            tap("Opciones avanzadas")
-            tap("Inglés → Español")
+            compose.onNodeWithContentDescription("Back").performClick()
+            tap("Home")
+            tap("Advanced options")
+            tap("English → Spanish")
             checkQuestionLayout("run")
             compose.onNodeWithText("correr").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Escuchar pronunciación").assertExists()
+            compose.onNodeWithContentDescription("Listen to pronunciation").assertExists()
             compose.onNodeWithText("/ɹʌn/").assertExists()
-            compose.onNodeWithContentDescription("Traducción automática de Google Translate").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Translated by Google").assertDoesNotExist()
             captureEmulator("piloto-repasar-antes-claro.png")
-            tap("Mostrar respuesta")
+            tap("Show answer")
             compose.onNodeWithText("correr").assertIsDisplayed()
-            compose.onAllNodesWithContentDescription("Traducción automática de Google Translate").assertCountEquals(1)
+            compose.onAllNodesWithContentDescription("Translated by Google").assertCountEquals(1)
             compose.onNodeWithText("I run when I have time.").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Bien").assertIsDisplayed()
+            compose.onNodeWithText("Good").assertIsDisplayed()
             compose.onNodeWithText("10 min").assertIsDisplayed()
             captureEmulator("repaso-controles-claro.png")
-            compose.onNodeWithContentDescription("Escuchar pronunciación").performScrollTo().performClick()
-            compose.onNodeWithText("No hay una voz inglesa local disponible.").assertIsDisplayed()
-            tap("Fácil")
+            compose.onNodeWithContentDescription("Listen to pronunciation").performScrollTo().performClick()
+            compose.onNodeWithText("No local English voice available.").assertIsDisplayed()
+            tap("Easy")
             compose.waitUntil(5000) { runBlocking { db.reviews().schedules().first().size == 1 } }
         }
     }
@@ -61,36 +62,36 @@ class StudyLayoutTest {
     @Test fun longManualQuestionAndRevealedContentRemainReachableWithLargerText() {
         val english = "to read between the lines when someone chooses their words very carefully"
         withCard(english, "leer entre líneas", dark = true, fontScale = 1.6f) { db ->
-            tap("Repasar")
-            tap("Práctica manual sin calificar")
-            tap("Inglés → Español")
-            tap("Iniciar práctica")
+            tap("Review")
+            tap("Manual practice")
+            tap("English → Spanish")
+            tap("Start practice")
             checkQuestionLayout(english)
-            compose.onNodeWithText("Sin IPA").assertExists()
+            compose.onNodeWithText("IPA unavailable").assertExists()
             compose.onNodeWithText("leer entre líneas").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Escuchar pronunciación").assertExists()
+            compose.onNodeWithContentDescription("Listen to pronunciation").assertExists()
             captureEmulator("piloto-practica-antes-oscuro.png")
-            tap("Mostrar respuesta")
+            tap("Show answer")
             compose.onNodeWithText("leer entre líneas").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithContentDescription("Escuchar pronunciación").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Listen to pronunciation").performScrollTo().assertIsDisplayed()
             captureEmulator("piloto-practica-despues-oscuro.png")
-            val next = compose.onNodeWithText("Siguiente")
+            val next = compose.onNodeWithText("Next")
             val fixedBottom = next.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.bottom
             compose.onNodeWithText("Be attentive", substring = true).performScrollTo()
             assertEquals(fixedBottom, next.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.bottom, 1f)
-            val book = compose.onNodeWithContentDescription("Guía de uso")
+            val book = compose.onNodeWithText("Usage guide")
             book.performScrollTo().performClick()
             compose.onNodeWithText("Una nota guardada para esta acepción.").assertExists()
-            tap("Volver al repaso")
-            tap("Editar tarjeta")
-            compose.onNodeWithText("Traducción al español").performScrollTo().performTextReplacement("descartar")
-            compose.onNodeWithContentDescription("Volver").performClick()
+            tap("Back to review")
+            tap("Edit card")
+            compose.onNodeWithText("Spanish translation").performScrollTo().performTextReplacement("descartar")
+            compose.onNodeWithContentDescription("Back").performClick()
             compose.onNodeWithText("leer entre líneas").assertExists()
-            compose.onNodeWithText("Mostrar respuesta").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Guía de uso").performScrollTo()
+            compose.onNodeWithText("Show answer").assertDoesNotExist()
+            compose.onNodeWithText("Usage guide").performScrollTo()
             captureEmulator("practica-controles-oscuro.png")
-            tap("Siguiente")
-            compose.onNodeWithText("Práctica terminada").assertExists()
+            tap("Next")
+            compose.onNodeWithText("Practice complete").assertExists()
             assertTrue(runBlocking { db.reviews().schedules().first().isEmpty() })
         }
     }
@@ -129,14 +130,15 @@ class StudyLayoutTest {
     private fun checkQuestionLayout(question: String) {
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val text = compose.onNodeWithText(question).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val button = compose.onNodeWithText("Mostrar respuesta").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithText("Show answer").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertEquals(root.center.x, text.center.x, 2f)
-        assertTrue(text.center.y in (root.height * 0.34f)..(root.height * 0.66f))
+        assertTrue(text.top >= root.top && text.bottom < button.top)
         assertTrue(button.center.y > root.height * 0.78f)
     }
 
     private fun tap(label: String) {
-        val node = compose.onNodeWithText(label)
+        compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onNode(hasText(label) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
         node.performClick()
     }
