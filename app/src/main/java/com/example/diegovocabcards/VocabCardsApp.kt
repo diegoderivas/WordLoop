@@ -63,7 +63,11 @@ internal fun VocabCardsApp(
     var studyOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     var settingsOrigin by rememberSaveable { mutableStateOf(Screen.Home) }
     val mainScreen = mainTabs.any { it.first == screen }
-    fun startStudy(selected: Direction?) {
+    var quickBatch by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    var studySession by rememberSaveable { mutableIntStateOf(0) }
+    fun startStudy(selected: Direction?, quick: Boolean) {
+        quickBatch = if (quick) ArrayList(queues?.getValue(selected)?.quickBatch().orEmpty()) else null
+        studySession++
         direction = selected
         studyOrigin = screen
         screen = Screen.Study
@@ -222,16 +226,21 @@ internal fun VocabCardsApp(
                         val selectedCards = cards.orEmpty().filter { card ->
                             manualTag == null || card.tags.any { it.equals(manualTag, true) }
                         }
-                        Practice(selectedCards, studyTools) { add(Screen.Manual) }
+                        Practice(selectedCards, studyTools, onDelete = model::deleteSense) { add(Screen.Manual) }
                     }
                     Screen.Study -> {
                         val queue = queues?.get(direction)
                         val loadedSchedules = schedules
                         if (queue != null && loadedSchedules != null) {
                             sessionState.SaveableStateProvider(Screen.Study.name) {
-                                ScheduledReview(queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools) {
-                                    sessionState.removeState(Screen.Study.name)
-                                    screen = Screen.Home
+                                key(studySession) {
+                                    ScheduledReview(queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools,
+                                        quickBatch = quickBatch, onDelete = model::deleteSense,
+                                        onContinue = { quickBatch = null; studySession++ }
+                                    ) {
+                                        sessionState.removeState(Screen.Study.name)
+                                        screen = Screen.Home
+                                    }
                                 }
                             }
                         } else Text(stringResource(R.string.ui_loading_reviews))

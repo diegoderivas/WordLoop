@@ -35,6 +35,11 @@ class StudyQueueTest {
         assertEquals(1, queue.newCount)
         assertEquals(101L, queue.nextDue)
         assertEquals("c", queue.nextAfter("a")!!.card.id)
+        assertEquals(listOf("ES_EN:1:a", "ES_EN:3:c", "EN_ES:2:a", "EN_ES:4:b", "ES_EN:0:b"),
+            queue.quickBatch())
+        val later = studyQueue(cards, rows, null, 101)
+        assertTrue("EN_ES:1:c" in later.quickBatch())
+        assertFalse("EN_ES:1:c" in queue.quickBatch())
         val alone = studyQueue(cards.filter { it.id == "a" }, rows, null, 100)
         assertNotNull(alone.nextAfter("a"))
         assertEquals(queue, studyQueue(cards.reversed(), rows.reversed(), null, 100))
@@ -45,6 +50,8 @@ class StudyQueueTest {
         val queue = studyQueue(cards, listOf(Schedule("200", EN_ES, 3, 80)), EN_ES, 100)
         assertEquals(250, queue.ready.size)
         assertEquals(249, queue.newCount)
+        assertEquals(10, queue.quickBatch().size)
+        assertEquals("EN_ES:3:200", queue.quickBatch().first())
         assertEquals("200", queue.ready.first().card.id)
     }
 }

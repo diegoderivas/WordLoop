@@ -99,8 +99,13 @@ internal fun Library(
                 onReveal = { exposedId = if (it) card.id else null }, onDelete = { confirmId = card.id }) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
+                    val category = card.senseCategories.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                        .joinToString(" · ", transform = ::categoryLabel)
+                    if (category.isNotEmpty()) Text(category, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source,
+                        style = MaterialTheme.typography.bodyLarge)
                     if (cards.any { it.language == "ja" }) Text(languageName(card.language), style = MaterialTheme.typography.labelSmall)
-                    TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
                     if (GEMINI_TRANSLATION in card.source) Text(stringResource(R.string.ui_translated_by_gemini), style = MaterialTheme.typography.labelSmall)
                     if (progress) row.sides.forEach { side ->
                         val due = side.schedule?.dueAt
@@ -148,19 +153,39 @@ internal fun Library(
 }
 
 @Composable
-internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit = {}, onAdd: () -> Unit) {
+internal fun Practice(
+    cards: List<Card>,
+    cardTools: @Composable (Card) -> Unit = {},
+    onDelete: (suspend (String) -> Unit)? = null,
+    onAdd: () -> Unit
+) {
     var direction by rememberSaveable { mutableStateOf<Direction?>(null) }
     var session by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     var index by rememberSaveable { mutableIntStateOf(0) }
     var revealed by rememberSaveable { mutableStateOf(false) }
     val ids = session
-    val card = cards.find { it.id == ids?.getOrNull(index) }
-    if (ids != null && card != null) {
-        key(card.id, index) {
-            val spanishFirst = direction == Direction.ES_EN || (direction == null && index < ids.size / 2)
-            StudyPresentation(card, spanishFirst, revealed, "${(if (spanishFirst) Direction.ES_EN else Direction.EN_ES).labelFor(languageName(card.language))} · ${index + 1} of ${ids.size}",
-                onReveal = { revealed = true }, cardTools = cardTools) {
-                Button(onClick = { revealed = false; index++ }, modifier = Modifier.fillMaxWidth()) {
+    val byId = cards.associateBy { it.id }
+    val position = ids?.let { (index until it.size).firstOrNull { position -> it[position] in byId } }
+    if (ids != null && position != null) {
+        val card = byId.getValue(ids[position])
+        key(card.id, position) {
+            val spanishFirst = direction == Direction.ES_EN || (direction == null && position < ids.size / 2)
+            val side = if (spanishFirst) Direction.ES_EN else Direction.EN_ES
+            val number = ids.take(position + 1).count { it in byId }
+            val total = ids.count { it in byId }
+            StudyPresentation(card, spanishFirst, revealed && position == index,
+                "${side.labelFor(languageName(card.language))} · $number of $total",
+                onReveal = { index = position; revealed = true }, cardTools = cardTools,
+                onDelete = onDelete?.let { remove ->
+                    { id ->
+                        remove(id)
+                        val nextIndex = ids.take(position).count { it != id }
+                        session = ArrayList(ids.filterNot { it == id })
+                        index = nextIndex
+                        revealed = false
+                    }
+                }) {
+                Button(onClick = { revealed = false; index = position + 1 }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.ui_next))
                 }
             }
@@ -170,7 +195,7 @@ internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit =
 
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when {
-            cards.isEmpty() -> {
+            cards.isEmpty() && ids == null -> {
                 Text(stringResource(R.string.ui_add_a_card_to_start_practising))
                 Button(onClick = onAdd) { Text(stringResource(R.string.ui_add_card)) }
             }

@@ -67,7 +67,7 @@ class StudyLayoutTest {
             tap("English → Spanish")
             tap("Start practice")
             checkQuestionLayout(english)
-            compose.onNodeWithText("IPA unavailable").assertExists()
+            compose.onNodeWithText("IPA unavailable").assertDoesNotExist()
             compose.onNodeWithText("leer entre líneas").assertDoesNotExist()
             compose.onNodeWithContentDescription("Listen to pronunciation").assertExists()
             captureEmulator("piloto-practica-antes-oscuro.png")

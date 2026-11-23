@@ -43,7 +43,7 @@ class ScheduledReviewTest {
             compose.onNodeWithText("fire").assertDoesNotExist()
             compose.onNodeWithText("IPA unavailable").assertDoesNotExist()
             click("Show answer")
-            compose.onNodeWithText("IPA unavailable").assertExists()
+            compose.onNodeWithText("IPA unavailable").assertDoesNotExist()
             click("Good")
             compose.waitUntil(5000) { compose.onAllNodesWithText("English → Spanish · 2 of 2").fetchSemanticsNodes().isNotEmpty() }
             val first = runBlocking { db.reviews().latest("one", Direction.ES_EN) }

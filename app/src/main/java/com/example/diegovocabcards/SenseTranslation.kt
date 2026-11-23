@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -103,13 +104,15 @@ internal fun senseTranslationEquivalent(response: String, term: String, category
 }
 
 @Composable
-internal fun TranslatedText(value: String, attributed: Boolean) {
+internal fun TranslatedText(
+    value: String, attributed: Boolean, style: androidx.compose.ui.text.TextStyle = LocalTextStyle.current
+) {
     if (attributed) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(value, Modifier.align(Alignment.CenterVertically))
+            Text(value, Modifier.align(Alignment.CenterVertically), style = style)
             TranslationAttribution(Modifier.align(Alignment.CenterVertically))
         }
-    } else Text(value)
+    } else Text(value, style = style)
 }
 
 @Composable

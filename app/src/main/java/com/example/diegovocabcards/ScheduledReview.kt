@@ -1,6 +1,7 @@
 package com.example.diegovocabcards
 
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 import android.database.sqlite.SQLiteException
 import androidx.compose.foundation.layout.*
@@ -61,7 +62,7 @@ internal fun rememberReviewQueues(
 internal fun ReviewDirections(
     queues: Map<Direction?, StudyQueue>?,
     home: Boolean,
-    onStart: (Direction?) -> Unit
+    onStart: (Direction?, Boolean) -> Unit
 ) {
     if (queues == null) {
         Text(stringResource(R.string.ui_loading_reviews))
@@ -79,17 +80,21 @@ internal fun ReviewDirections(
                 SummaryRow("Due for review", mixed.dueCount - mixed.ready.count { it.learning })
                 SummaryRow("New", mixed.newCount)
             }
-            Button(onClick = { onStart(null) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
+            Button(onClick = { onStart(null, false) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
                 colors = if (home) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary) else ButtonDefaults.buttonColors()) { Text(stringResource(R.string.ui_start_review)) }
         }
+    }
+    OutlinedButton(onClick = { onStart(null, true) }, enabled = mixed.ready.isNotEmpty(),
+        modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.ui_quick_review))
     }
     if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
     var advanced by rememberSaveable { mutableStateOf(false) }
     TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.ui_advanced_options)) }
     if (advanced) for (direction in Direction.entries) {
         val queue = queues.getValue(direction)
-        OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(),
+        OutlinedButton(onClick = { onStart(direction, false) }, modifier = Modifier.fillMaxWidth(),
             enabled = queue.ready.isNotEmpty()) {
             Text(direction.labelFor(LocalStudyCards.current.translationLabel()))
         }
@@ -106,6 +111,9 @@ internal fun ScheduledReview(
     clock: Clock,
     settings: ReviewSettings,
     cardTools: @Composable (Card) -> Unit,
+    quickBatch: List<String>? = null,
+    onDelete: suspend (String) -> Unit,
+    onContinue: () -> Unit,
     onHome: () -> Unit
 ) {
     var currentId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -113,22 +121,33 @@ internal fun ScheduledReview(
     var completed by rememberSaveable { mutableIntStateOf(0) }
     var finished by rememberSaveable { mutableStateOf(false) }
     var side by rememberSaveable { mutableStateOf(Direction.ES_EN) }
-    val question = queue.ready.find { it.card.id == currentId && it.turn == turn && it.direction == side }
+    var deletedIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    val available = queue.ready.filterNot { it.card.id in deletedIds }
+    val pending = if (quickBatch == null) available else {
+        val byKey = available.associateBy { it.key }
+        quickBatch.mapNotNull(byKey::get)
+    }
+    val question = pending.find { it.card.id == currentId && it.turn == turn && it.direction == side }
     if (finished) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.ui_review_complete), style = MaterialTheme.typography.headlineSmall)
-            Text("Ratings saved: $completed")
-            if (queue.ready.isEmpty()) {
+            Text(stringResource(R.string.ui_ratings_saved, completed))
+            Text(pluralStringResource(R.plurals.questions_available, available.size, available.size))
+            if (available.isEmpty()) {
                 Text(stringResource(R.string.ui_no_questions_due))
                 queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
-            } else Text(stringResource(R.string.ui_more_questions_are_available))
+            } else {
+                Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.ui_continue_review))
+                }
+            }
             Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_back_to_home)) }
         }
     } else if (question == null) {
         // Advance only once Room has published the committed turn.
-        LaunchedEffect(currentId, side, turn, queue, schedules) {
-            if (schedules.any { it.senseId == currentId && it.direction == side && it.turn > turn }) completed++
-            val next = queue.nextAfter(currentId)
+        LaunchedEffect(currentId, side, turn, pending, schedules) {
+            if (currentId !in deletedIds && schedules.any { it.senseId == currentId && it.direction == side && it.turn > turn }) completed++
+            val next = pending.firstOrNull { it.card.id != currentId } ?: pending.firstOrNull()
             if (next == null) finished = true
             else {
                 currentId = next.card.id
@@ -138,7 +157,12 @@ internal fun ScheduledReview(
         }
     } else {
         key(question.card.id, question.direction, turn) {
-            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools, completed, queue.ready.size) { rating, revealedAt ->
+            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools, completed, pending.size,
+                onDelete = { id ->
+                    onDelete(id)
+                    deletedIds = ArrayList(deletedIds + id)
+                }
+            ) { rating, revealedAt ->
                 dao.rate(question.card.id, question.direction, question.turn, rating, clock.millis(), settings, revealedAt)
             }
         }
@@ -155,6 +179,7 @@ private fun StudyQuestion(
     settings: ReviewSettings,
     cardTools: @Composable (Card) -> Unit,
     completed: Int, remaining: Int,
+    onDelete: suspend (String) -> Unit,
     onRate: suspend (Rating, Long) -> Unit
 ) {
     var revealedAt by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -166,7 +191,8 @@ private fun StudyQuestion(
     StudyPresentation(
         card, spanishFirst, revealed = at != null,
         caption = "${direction.labelFor(languageName(card.language))} · ${completed + 1} of ${completed + remaining}",
-        onReveal = { revealedAt = clock.millis() }, cardTools = cardTools
+        onReveal = { revealedAt = clock.millis() }, cardTools = cardTools,
+        onDelete = onDelete, ratingPending = saving
     ) {
         if (at != null) {
             if (failed) Text(stringResource(R.string.ui_could_not_save_tap_a_rating_to_retry), color = MaterialTheme.colorScheme.error)
@@ -194,7 +220,6 @@ private fun StudyQuestion(
                                         onRate(rating, at)
                                     } catch (_: SQLiteException) {
                                         failed = true
-                                    } finally {
                                         saving = false
                                     }
                                 }

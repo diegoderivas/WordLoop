@@ -1,6 +1,9 @@
 package com.example.diegovocabcards
 
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import android.database.sqlite.SQLiteException
+import kotlinx.coroutines.launch
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +26,8 @@ internal fun StudyPresentation(
     caption: String,
     onReveal: () -> Unit,
     cardTools: @Composable (Card) -> Unit = {},
+    onDelete: (suspend (String) -> Unit)? = null,
+    ratingPending: Boolean = false,
     actions: @Composable ColumnScope.() -> Unit
 ) {
     val player = LocalPronunciationPlayer.current
@@ -35,14 +40,66 @@ internal fun StudyPresentation(
             player.speak(card.english)
         }
     }
+    var confirming by rememberSaveable(card.id) { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteFailed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(caption, style = MaterialTheme.typography.labelLarge)
-            StudyTile(card, spanishFirst, revealed)
-            if (revealed) cardTools(card)
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(caption, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+            if (onDelete != null) {
+                IconButton(onClick = { deleteFailed = false; confirming = true },
+                    enabled = !ratingPending && !deleting, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.delete_card_outline), stringResource(R.string.ui_delete_card),
+                        tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
+                StudyTile(card, spanishFirst, revealed)
+                if (revealed) cardTools(card)
+            }
         }
         if (revealed) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
         else Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) { Text(stringResource(R.string.ui_show_answer)) }
+    }
+    if (confirming && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { if (!deleting) confirming = false },
+            title = { Text(stringResource(R.string.ui_confirm_study_delete, card.english, card.spanish)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.ui_study_delete_history))
+                    if (deleteFailed) Text(stringResource(R.string.ui_could_not_delete_the_card_please_try_again),
+                        color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }, enabled = !deleting) {
+                    Text(stringResource(R.string.ui_cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !deleting && !ratingPending, onClick = {
+                    if (!deleting && !ratingPending) {
+                        deleting = true
+                        deleteFailed = false
+                        scope.launch {
+                            try {
+                                onDelete(card.id)
+                                confirming = false
+                            } catch (_: SQLiteException) {
+                                deleteFailed = true
+                            } finally {
+                                deleting = false
+                            }
+                        }
+                    }
+                }) { Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error) }
+            }
+        )
     }
 }
 
@@ -87,7 +144,7 @@ private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean) {
 
 @Composable
 private fun EnglishStudyText(card: Card, style: androidx.compose.ui.text.TextStyle) {
-    EnglishPronunciation(card.english, card.ipa) {
+    EnglishPronunciation(card.english, preferredIpa(card.ipa)) {
         Spacer(Modifier.width(48.dp))
         Text(card.english, Modifier.weight(1f), style = style, textAlign = TextAlign.Center)
     }

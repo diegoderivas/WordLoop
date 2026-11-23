@@ -143,4 +143,14 @@
         <item quantity="one">%1$d synonym</item>
         <item quantity="other">%1$d synonyms</item>
     </plurals>
+    <string name="ui_delete_card">Delete card</string>
+    <string name="ui_confirm_study_delete">Delete “%1$s → %2$s”?</string>
+    <string name="ui_study_delete_history">This will delete this card and its review history in both directions.</string>
+    <string name="ui_quick_review">Quick review · up to 10 questions</string>
+    <string name="ui_continue_review">Continue review</string>
+    <string name="ui_ratings_saved">Ratings saved: %1$d</string>
+    <plurals name="questions_available">
+        <item quantity="one">%1$d question available</item>
+        <item quantity="other">%1$d questions available</item>
+    </plurals>
 </resources>

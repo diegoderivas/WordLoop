@@ -4,13 +4,26 @@ import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.Schedule
 import io.github.openspacedrepetition.State
 
-internal data class Question(val card: Card, val turn: Int, val direction: Direction, val learning: Boolean = false)
+internal data class Question(val card: Card, val turn: Int, val direction: Direction, val learning: Boolean = false) {
+    val key: String get() = "${direction.name}:$turn:${card.id}"
+}
 internal data class StudyQueue(
     val ready: List<Question>,
     val newCount: Int,
     val dueCount: Int,
     val nextDue: Long?
 ) {
+    fun quickBatch(): List<String> {
+        val pending = ready.toMutableList()
+        var previousId: String? = null
+        return List(minOf(10, pending.size)) {
+            val index = pending.indexOfFirst { it.card.id != previousId }.coerceAtLeast(0)
+            val question = pending.removeAt(index)
+            previousId = question.card.id
+            question.key
+        }
+    }
+
     fun nextAfter(senseId: String?): Question? =
         ready.firstOrNull { it.card.id != senseId } ?: ready.firstOrNull()
 }
