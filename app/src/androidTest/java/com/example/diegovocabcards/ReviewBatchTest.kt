@@ -33,12 +33,11 @@ class ReviewBatchTest {
     private val later = "Remaining words will be available in a later session."
 
     @Test fun quickIsDisabledWhenNothingIsAvailableOnBothEntryScreens() = withApp {
-        for (screen in listOf("Home", "Review")) {
-            if (screen == "Review") tap(screen)
-            waitFor(quick)
-            compose.onNodeWithText("Start review").assertIsNotEnabled()
-            compose.onNodeWithText(quick).assertIsNotEnabled()
-        }
+        waitFor("Welcome to WordLoop")
+        tap("Review")
+        waitFor(quick)
+        compose.onNodeWithText("Start review").assertIsNotEnabled()
+        compose.onNodeWithText(quick).assertIsNotEnabled()
     }
 
     @Test fun startReviewCanScoreMoreThanTenQuestions() = withApp { db ->
@@ -50,7 +49,7 @@ class ReviewBatchTest {
             tap("Show answer")
             tap("Easy")
         }
-        waitFor("Ratings saved: 12")
+        waitFor("Answered: 12")
     }
 
     @Test fun fullReviewUsesAllQuestionsAndQuickNeverExpands() = withApp { db ->
@@ -61,7 +60,7 @@ class ReviewBatchTest {
         waitFor("1 of 12", substring = true)
         compose.onNodeWithContentDescription("Back").performClick()
         tap("Review")
-        tap(quick)
+        tap("Quick review · 10 questions")
         waitFor("1 of 10", substring = true)
         runBlocking { db.vocabulary().save("late", "Late card", "Tarjeta tardía", "", "") }
         repeat(10) {
@@ -69,7 +68,7 @@ class ReviewBatchTest {
             tap("Show answer")
             tap(if (it == 0) "Again" else "Easy")
         }
-        waitFor("Ratings saved: 10")
+        waitFor("Answered: 10")
         compose.onNodeWithText("4 questions available").assertExists()
         assertEquals(10, runBlocking { db.backup().countEvents() })
         tap("Continue review")
@@ -78,21 +77,21 @@ class ReviewBatchTest {
             tap("Show answer")
             tap("Easy")
         }
-        waitFor("Ratings saved: 13")
+        waitFor("Answered: 13")
         compose.onNodeWithText(later).assertExists()
     }
 
     @Test fun quickStopsAfterThreeDistinctWords() = withApp { db ->
         seedMixed(db)
         runBlocking { db.vocabulary().save("d", "mist", "niebla", "", "") }
-        tap(quick)
+        tap("Quick review · 3 questions")
         repeat(3) {
             waitFor("${it + 1} of 3", substring = true)
             tap("Show answer")
             tap("Easy")
         }
-        waitFor("Ratings saved: 3")
-        compose.onNodeWithText("5 questions available").assertExists()
+        waitFor("Answered: 3")
+        compose.onNodeWithText("5 questions left for another session").assertExists()
         compose.onNodeWithText(later).assertExists()
         captureEmulator("review-word-gap-summary-light.png")
     }
@@ -101,7 +100,7 @@ class ReviewBatchTest {
         seedMixed(db)
         runBlocking { db.vocabulary().save("d", "mist", "niebla", "", "") }
         val retained = runBlocking { db.reviews().latest("a", Direction.EN_ES) }
-        tap(quick)
+        tap("Quick review · 3 questions")
         waitFor("1 of 3", substring = true)
         tap("Show answer")
         tap("Easy")
@@ -112,7 +111,7 @@ class ReviewBatchTest {
         waitFor("2 of 2", substring = true)
         tap("Show answer")
         tap("Easy")
-        waitFor("Ratings saved: 2")
+        waitFor("Answered: 2")
         assertEquals(setOf("a", "b", "d"), runBlocking { db.vocabulary().cards().first().map { it.id }.toSet() })
         assertTrue(runBlocking { db.reviews().recent("a", Direction.EN_ES).contains(retained) })
     }
@@ -158,7 +157,7 @@ class ReviewBatchTest {
         waitFor("niebla")
         tap("Show answer")
         tap("Easy")
-        waitFor("Ratings saved: 8")
+        waitFor("Answered: 8")
         assertEquals(2, runBlocking { db.reviews().recent("00", Direction.ES_EN).size })
     }
 
@@ -188,7 +187,7 @@ class ReviewBatchTest {
         tap("Start review")
         openDelete()
         tap("Delete")
-        waitFor("Ratings saved: 0")
+        waitFor("Answered: 0")
         compose.onNodeWithText("No questions due.").assertIsDisplayed()
     }
 
@@ -200,7 +199,7 @@ class ReviewBatchTest {
         val mode = if (dark) "dark" else "light"
         waitFor("6 questions")
         compose.onNodeWithText("Start review").assertIsDisplayed()
-        compose.onNodeWithText(quick).assertIsDisplayed()
+        compose.onNodeWithText("Quick review · 2 questions").assertIsDisplayed()
         captureEmulator("quick-review-home-$mode.png")
         tap("Library")
         waitFor("despedir")
@@ -209,9 +208,9 @@ class ReviewBatchTest {
         captureEmulator("quick-review-library-$mode.png")
         tap("Review")
         compose.onNodeWithText("Today").assertIsDisplayed()
-        compose.onNodeWithText(quick).assertIsDisplayed()
+        compose.onNodeWithText("Quick review · 2 questions").assertIsDisplayed()
         captureEmulator("quick-review-entry-$mode.png")
-        tap(quick)
+        tap("Quick review · 2 questions")
         openDelete()
         tap("Cancel")
         compose.onNodeWithText("Delete “fire → fuego”?").assertDoesNotExist()

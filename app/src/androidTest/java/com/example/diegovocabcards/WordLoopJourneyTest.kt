@@ -40,7 +40,7 @@ class WordLoopJourneyTest {
             compose.waitUntil(5000) { runBlocking { db.backup().settings()?.language == "ja" } }
             compose.onNodeWithContentDescription("Back").performClick()
             tap("Add card")
-            compose.onNodeWithText("Headword").performTextInput("bloom")
+            compose.onNodeWithText("English word or phrase").performTextInput("bloom")
             compose.onNodeWithText("Japanese translation").performScrollTo().performTextInput("咲く")
             tap("Save card")
             compose.waitUntil(5000) { runBlocking { db.vocabulary().cards().first().size == 2 } }
@@ -152,7 +152,7 @@ class WordLoopJourneyTest {
             waitFor("Start review")
             shot("home")
             tap("Add card")
-            compose.onNodeWithText("Headword").performTextInput("bloom")
+            compose.onNodeWithText("English word or phrase").performTextInput("bloom")
             waitFor(bloom.definition)
             tap(bloom.definition)
             compose.onNodeWithText("Change meaning").assertExists()
@@ -169,7 +169,7 @@ class WordLoopJourneyTest {
             shot("editor-keyboard")
             tap("Save and add another")
             compose.waitUntil(10000) { runBlocking { db.vocabulary().cards().first().size == 3 } }
-            compose.onNodeWithText("Headword").assertTextContains("")
+            compose.onNodeWithText("English word or phrase").assertTextContains("")
             compose.onNodeWithText("Spanish translation").assertTextContains("")
             val saved = runBlocking { db.vocabulary().cards().first().first { it.english == "bloom" } }
             assertEquals("florecer", saved.spanish)

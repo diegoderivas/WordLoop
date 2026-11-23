@@ -15,11 +15,12 @@ internal data class LibraryRow(val card: Card, val sides: List<LibrarySide>)
 
 internal fun organiseLibrary(
     newestFirst: List<Card>, schedules: List<Schedule>, query: String, tag: String?, direction: Direction?,
-    status: String?, order: LibraryOrder
+    status: String?, order: LibraryOrder, language: String? = null
 ): List<LibraryRow> {
     val term = query.trim()
     val bySide = schedules.associateBy { it.senseId to it.direction }
     val matches = newestFirst.mapNotNull { card ->
+        if (language != null && card.language != language) return@mapNotNull null
         if (!card.english.contains(term, true) && !card.spanish.contains(term, true)) return@mapNotNull null
         if (tag != null && card.tags.none { it.equals(tag, true) }) return@mapNotNull null
         val sides = listOf(Direction.EN_ES, Direction.ES_EN).filter { direction == null || it == direction }

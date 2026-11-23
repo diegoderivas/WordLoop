@@ -60,7 +60,7 @@ class IpaFallbackTest {
             tap("Close")
             tap("Done")
             compose.onNodeWithText("Spanish translation").performScrollTo().performTextInput("ser despedido")
-            ipa.performScrollTo()
+            compose.onNodeWithText("/get ˈfaɪəd/").performScrollTo()
             captureEmulator("ipa-gemini-editor-claro.png")
             tap("Save card")
             compose.waitUntil(5000) { editorModel.saved != null }
@@ -142,6 +142,7 @@ class IpaFallbackTest {
             }
             compose.waitUntil(5000) { started.isCompleted }
             assertEquals(original.definition, runBlocking { started.await() }.definition)
+            tap("Add IPA")
             ipa.performScrollTo().performTextInput("/teɪk ɒf/")
             ipa.performTextClearance()
             answer.complete("/teɪk ˈɒf/")

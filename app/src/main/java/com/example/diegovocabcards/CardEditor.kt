@@ -51,6 +51,11 @@ internal fun mergeMeaningFields(
     }
 }
 
+internal class EditorExitGuard {
+    var request: ((() -> Unit) -> Unit)? = null
+    var pending: (() -> Unit)? = null
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CardEditor(
@@ -62,10 +67,12 @@ internal fun CardEditor(
     ipaSuggestion: suspend (IpaContext) -> String? = ::suggestIpa,
     fromStudy: Boolean = false,
     language: String = original?.language ?: "es",
+    exitGuard: EditorExitGuard? = null,
     onOpenExisting: (String) -> Unit = {},
     onAnotherSense: (Card) -> Unit
 ) {
     val id = rememberSaveable { original?.id ?: UUID.randomUUID().toString() }
+    var touched by rememberSaveable { mutableStateOf(false) }
     var english by rememberSaveable { mutableStateOf(original?.english ?: initialEnglish) }
     var spanish by rememberSaveable { mutableStateOf(original?.spanish.orEmpty()) }
     var example by rememberSaveable { mutableStateOf(original?.example.orEmpty()) }
@@ -110,6 +117,7 @@ internal fun CardEditor(
         }
     }
     fun editValue(field: MeaningField, value: String) {
+        touched = true
         if (field in automatic && value.isNotBlank()) {
             retainedSource = combineSources(retainedSource, activeSource)
         }
@@ -184,6 +192,7 @@ internal fun CardEditor(
             .filterNot { it == GOOGLE_TRANSLATION || it == GEMINI_TRANSLATION }.joinToString("\n\n")
         spanish = value
         if (explicitly) {
+            touched = true
             manualFields = ArrayList((manualFields + MeaningField.Spanish.name).distinct())
             automaticFields = ArrayList(automaticFields - MeaningField.Spanish.name)
         } else {
@@ -283,6 +292,7 @@ internal fun CardEditor(
         }
     }
     fun applySuggestion(value: Suggestion, replaceManual: Boolean = false) {
+        touched = true
         val incoming = fieldsFrom(value)
         val merged = mergeMeaningFields(currentValues, incoming, automatic, manual, replaceManual)
         val applied = merged.keys.filter { field ->
@@ -312,6 +322,7 @@ internal fun CardEditor(
         proposed = null
     }
     fun selectExample(value: String) {
+        touched = true
         example = value
         manualFields = ArrayList((manualFields + MeaningField.Example.name).distinct())
         automaticFields = ArrayList(automaticFields - MeaningField.Example.name)
@@ -341,6 +352,20 @@ internal fun CardEditor(
         synonyms, senseCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource)),
         if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, formattedIpa(ipa), ipaSource, language)
+    var discard by remember { mutableStateOf(false) }
+    val baseline = original ?: Card(id, initialEnglish.trim(), "", "", initialTags, language = language)
+    val dirty by rememberUpdatedState(touched && draft != baseline)
+    DisposableEffect(exitGuard) {
+        exitGuard?.request = { leave -> if (dirty) { exitGuard.pending = leave; discard = true } else leave() }
+        onDispose { exitGuard?.request = null; exitGuard?.pending = null }
+    }
+    if (discard) AlertDialog(
+        onDismissRequest = { discard = false; exitGuard?.pending = null },
+        title = { Text("Discard changes?") },
+        text = { Text("Your unsaved changes will be lost.") },
+        confirmButton = { TextButton(onClick = { discard = false; exitGuard?.pending?.invoke() }) { Text("Discard") } },
+        dismissButton = { TextButton(onClick = { discard = false; exitGuard?.pending = null }) { Text("Keep editing") } }
+    )
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -365,11 +390,23 @@ internal fun CardEditor(
                             if (MeaningField.Spanish in automatic) translationSource = ""
                             if (!manualIpa) { ipa = ""; ipaSource = "" }
                         }
+                        touched = true
                         english = value
                     }, Modifier.weight(1f), enabled = !busy,
                     label = { Text(stringResource(R.string.ui_headword)) }, singleLine = true)
                 }
-                OutlinedTextField(ipa, { value ->
+                var editIpa by rememberSaveable { mutableStateOf(false) }
+                TextButton(onClick = { editIpa = !editIpa }) {
+                    when {
+                        editIpa -> Text("Hide pronunciation")
+                        ipa.isBlank() -> Text("Add IPA")
+                        else -> { Text("IPA"); Spacer(Modifier.width(8.dp)); Text(ipa) }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Icon(androidx.compose.ui.res.painterResource(if (editIpa) R.drawable.expand_less else R.drawable.expand_more), null)
+                }
+                if (editIpa) OutlinedTextField(ipa, { value ->
+                    touched = true
                     ipa = value
                     ipaSource = MANUAL_IPA
                     manualIpa = true
@@ -400,7 +437,11 @@ internal fun CardEditor(
                 if (viewingMatches) AlertDialog(onDismissRequest = { viewingMatches = false },
                 title = { Text("Cards for $currentQuery") }, text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
-                        for (card in matches) TextButton(onClick = { viewingMatches = false; onOpenExisting(card.id) }) {
+                        for (card in matches) TextButton(onClick = {
+                            viewingMatches = false
+                            val open = { onOpenExisting(card.id) }
+                            exitGuard?.request?.invoke(open) ?: open()
+                        }) {
                             Text(card.spanish)
                         }
                     }
@@ -521,7 +562,11 @@ internal fun CardEditor(
                     guideExpanded = !guideExpanded
                     guideTap = guideExpanded
                     if (guideExpanded && usageNote.isBlank() && providers?.guide?.result == null) requestGuide()
-                }) { Text(stringResource(R.string.ui_usage_guide)) }
+                }) {
+                    Text(stringResource(R.string.ui_usage_guide))
+                    Spacer(Modifier.width(6.dp))
+                    Icon(androidx.compose.ui.res.painterResource(if (guideExpanded) R.drawable.expand_less else R.drawable.expand_more), null)
+                }
                 if (guideExpanded) {
                     if (usageNote.isNotBlank() && providerSense != null && providers?.guide?.result == null && providers?.guide?.loading == false && !(usageNotes === NanoUsageNotes && NanoUsageNotes.unsupported)) {
                         TextButton(onClick = { requestGuide(retry = true) }) { Text("Generate again") }
@@ -530,18 +575,23 @@ internal fun CardEditor(
                         UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) }, enabled = !busy,
                         onAddExample = { generated ->
                             if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
+                                touched = true
                                 generatedExamples = (generatedExamples.lines().filter(String::isNotBlank) + generated)
                                 .joinToString("\n")
                             }
                         })
                     }
                     OutlinedTextField(if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() },
-                    { usageNote = it; guideEdited = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_edit_guide)) })
+                    { touched = true; usageNote = it; guideEdited = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_edit_guide)) })
                 }
             }
 
             Section {
-                TextButton(onClick = { focus.clearFocus(); details = true }) { Text(stringResource(R.string.ui_card_details)) }
+                TextButton(onClick = { focus.clearFocus(); details = true }) {
+                    Text(stringResource(R.string.ui_card_details))
+                    Spacer(Modifier.width(6.dp))
+                    Icon(androidx.compose.ui.res.painterResource(R.drawable.chevron_right), null)
+                }
                 Text(detailSummary(listOf(example, generatedExamples).filter(String::isNotBlank).joinToString("\n"), synonyms), style = MaterialTheme.typography.bodySmall)
             }
             if (original != null && !fromStudy) {
@@ -634,13 +684,13 @@ internal fun CardEditor(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     tags.forEach { label ->
                         InputChip(selected = true, enabled = !busy,
-                        onClick = { tags = ArrayList(tags - label) },
+                        onClick = { touched = true; tags = ArrayList(tags - label) },
                         label = { Text(label) }, trailingIcon = { Text("×") })
                     }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(pending, { pending = it }, Modifier.weight(1f), enabled = !busy,
+                OutlinedTextField(pending, { touched = true; pending = it }, Modifier.weight(1f), enabled = !busy,
                 label = { Text(stringResource(R.string.ui_new_tag)) }, singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { addPending(); focus.clearFocus() }))
@@ -649,12 +699,14 @@ internal fun CardEditor(
             val available = knownTags.filter { label -> tags.none { it.equals(label, ignoreCase = true) } }
             if (available.isNotEmpty()) {
                 TagMenu("Choose existing tag", available, enabled = !busy) {
+                    touched = true
                     tags = ArrayList(tags + it)
                 }
             }
 
         }
         SavedUsageContent("", generatedExamples, onRemoveExample = { removed ->
+            touched = true
             generatedExamples = generatedExamples.lines().filterNot { it == removed }.joinToString("\n")
         })
         val sources = combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource, ipaSource,

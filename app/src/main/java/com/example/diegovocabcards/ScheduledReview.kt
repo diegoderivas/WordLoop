@@ -91,9 +91,11 @@ internal fun ReviewDirections(
                     contentColor = MaterialTheme.colorScheme.primary) else ButtonDefaults.buttonColors()) { Text(stringResource(R.string.ui_start_review)) }
         }
     }
+    val quickCount = remember(mixed) { mixed.quickBatch().size }
     OutlinedButton(onClick = { onStart(null, true) }, enabled = mixed.ready.isNotEmpty(),
         modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.ui_quick_review))
+        Text(if (quickCount == 0) stringResource(R.string.ui_quick_review)
+            else "Quick review · " + pluralStringResource(R.plurals.questions, quickCount, quickCount))
     }
     if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -138,11 +140,13 @@ internal fun ScheduledReview(
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.ui_review_complete), style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.ui_ratings_saved, completed))
-            Text(pluralStringResource(R.plurals.questions_available, available.size, available.size))
+            val blocked = available.isNotEmpty() && nextStudyQuestion(available, recentWords) == null
+            Text(if (blocked) pluralStringResource(R.plurals.questions_deferred, available.size, available.size)
+                else pluralStringResource(R.plurals.questions_available, available.size, available.size))
             if (available.isEmpty()) {
                 Text(stringResource(R.string.ui_no_questions_due))
                 queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
-            } else if (nextStudyQuestion(available, recentWords) == null) {
+            } else if (blocked) {
                 Text(stringResource(R.string.ui_remaining_words_later))
             } else {
                 Button(onClick = {

@@ -65,6 +65,7 @@ class SuggestionsTest {
                         usageNotes = { _, _, _ -> UsageNoteResult.Unavailable }) {}
                 }
             }
+            compose.tapControl("Add IPA")
             val ipa = compose.onNodeWithText("Pronunciation (IPA)")
             ipa.performScrollTo().performTextInput("faɪə")
             val meaning = Suggestion("Flames and heat.", "noun", "fixture",
@@ -170,7 +171,7 @@ class SuggestionsTest {
                 }
             }
 
-            val english = compose.onNodeWithText("Headword")
+            val english = compose.onNodeWithText("English word or phrase")
             english.performTextInput("hire")
             waitFor(work.definition)
             compose.onAllNodesWithText(work.definition).assertCountEquals(1)
@@ -353,7 +354,7 @@ class SuggestionsTest {
             assertTrue(GEMINI_TRANSLATION in saved.source && GOOGLE_TRANSLATION !in saved.source)
             assertTrue(GEMINI_SYNONYMS in saved.source)
             compose.runOnIdle { model.acknowledgeSave() }
-            compose.onNodeWithText("Headword").performScrollTo().performTextReplacement("get fired")
+            compose.onNodeWithText("English word or phrase").performScrollTo().performTextReplacement("get fired")
             waitFor(dismissed.definition)
             tap(dismissed.definition)
             compose.onNodeWithText("Keep my edits").performClick()
@@ -381,9 +382,9 @@ class SuggestionsTest {
             }
         }
         try {
-            compose.onNodeWithText("Headword").performTextInput("run")
+            compose.onNodeWithText("English word or phrase").performTextInput("run")
             compose.waitUntil(5000) { started.get() }
-            compose.onNodeWithText("Headword").performTextReplacement("look up")
+            compose.onNodeWithText("English word or phrase").performTextReplacement("look up")
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("Definition for look up").fetchSemanticsNodes().isNotEmpty()
             }

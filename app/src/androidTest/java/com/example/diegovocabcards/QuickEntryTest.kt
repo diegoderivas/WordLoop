@@ -38,7 +38,7 @@ class QuickEntryTest {
             val meanings = listOf("refrescar", "buscar", "correr")
             for (i in terms.indices) {
                 compose.onNodeWithText("Save card").assertIsNotEnabled()
-                enter("Headword", terms[i])
+                enter("English word or phrase", terms[i])
                 enter("Spanish translation", meanings[i])
                 if (i == 0) {
                     click("Card details")

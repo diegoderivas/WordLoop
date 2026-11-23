@@ -55,7 +55,7 @@ class ScheduledReviewTest {
             click("Show answer")
             click("Easy")
             compose.waitUntil(5000) { compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Ratings saved: 1").assertExists()
+            compose.onNodeWithText("Answered: 1").assertExists()
             assertEquals(first, runBlocking { db.reviews().latest("one", Direction.ES_EN) })
             assertEquals(io.github.openspacedrepetition.Rating.EASY, runBlocking { db.reviews().latest("one", Direction.EN_ES) }!!.rating)
         } finally {
@@ -110,7 +110,7 @@ class ScheduledReviewTest {
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Ratings saved: 1").assertExists()
+            compose.onNodeWithText("Answered: 1").assertExists()
             click("Back to Home")
             click("Advanced options")
             compose.onNode(hasText("Spanish → English") and hasClickAction()).assertIsNotEnabled()

@@ -86,6 +86,7 @@ class StudyLayoutTest {
             tap("Edit card")
             compose.onNodeWithText("Spanish translation").performScrollTo().performTextReplacement("descartar")
             compose.onNodeWithContentDescription("Back").performClick()
+            tap("Discard")
             compose.onNodeWithText("leer entre líneas").assertExists()
             compose.onNodeWithText("Show answer").assertDoesNotExist()
             compose.onNodeWithText("Usage guide").performScrollTo()

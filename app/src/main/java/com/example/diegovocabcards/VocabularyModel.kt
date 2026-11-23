@@ -12,6 +12,8 @@ import com.example.diegovocabcards.data.LibrarySettings
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.VocabularyDatabase
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import java.util.UUID
 
 internal enum class AfterSave { Library, AnotherCard, AnotherSense, Study }
 internal data class SavedCard(val card: Card, val next: AfterSave)
@@ -42,6 +44,20 @@ internal class VocabularyModel(app: Application, private val database: Vocabular
     suspend fun saveMissingGuide(card: Card, note: UsageNote): Boolean =
         dao.saveMissingGuide(card.id, card.english, card.spanish, card.definition, card.senseCategories,
             card.example, card.generatedExamples, note.forStorage()) == 1
+
+    suspend fun importCards(incoming: List<Card>): Int = database.withTransaction {
+        fun Card.meaningKey() = listOf(senseText(english), language, senseText(spanish), senseText(definition))
+        val existing = dao.cards().first().mapTo(mutableSetOf()) { it.meaningKey() }
+        var added = 0
+        for (card in incoming) {
+            if (!existing.add(card.meaningKey())) continue
+            dao.save(UUID.randomUUID().toString(), card.english, card.spanish, card.example,
+                card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
+                card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource, card.language)
+            added++
+        }
+        added
+    }
 
     suspend fun deleteSense(id: String) = dao.deleteSense(id)
 

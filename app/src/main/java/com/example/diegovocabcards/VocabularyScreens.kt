@@ -17,6 +17,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.review.Direction
@@ -26,6 +28,7 @@ import com.example.diegovocabcards.review.Direction
 internal fun Library(
     cards: List<Card>, knownTags: List<String>, highlighted: String?,
     onAdd: () -> Unit, onEdit: (String) -> Unit, onDelete: suspend (String) -> Unit,
+    model: VocabularyModel? = null,
     onProgress: (String) -> Unit = {},
     filter: String? = null, onFilter: (String?) -> Unit = {}, onPractice: (String) -> Unit = {},
     schedules: List<com.example.diegovocabcards.data.Schedule> = emptyList(), onAnother: (Card) -> Unit = {}
@@ -43,30 +46,34 @@ internal fun Library(
     var order by rememberSaveable { mutableStateOf(LibraryOrder.Alphabetical) }
     var direction by rememberSaveable { mutableStateOf<Direction?>(null) }
     var status by rememberSaveable { mutableStateOf<String?>(null) }
-    val visible = remember(cards, schedules, search, filter, direction, status, order) {
-        organiseLibrary(cards, schedules, search, filter, direction, status, order)
+    var language by rememberSaveable { mutableStateOf<String?>(null) }
+    val visible = remember(cards, schedules, search, filter, direction, status, order, language) {
+        organiseLibrary(cards, schedules, search, filter, direction, status, order, language)
     }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     var lastHighlighted by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(highlighted, cards) {
         if (highlighted != null && highlighted != lastHighlighted && cards.any { it.id == highlighted }) {
-            search = ""; direction = null; status = null
+            search = ""; direction = null; status = null; language = null
             val index = organiseLibrary(cards, schedules, "", filter, null, null, order).indexOfFirst { it.card.id == highlighted }
             if (index >= 0) list.scrollToItem(index)
             lastHighlighted = highlighted
         }
     }
     OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(if (cards.any { it.language == "ja" }) "Search English or translation" else stringResource(R.string.ui_search_english_or_spanish)) }, singleLine = true)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(false to "List", true to "Progress").forEach { (value, label) ->
-            FilterChip(selected = progress == value, onClick = { focus.clearFocus(); progress = value }, label = { Text(label) }, modifier = Modifier.weight(1f))
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        listOf("List", "Progress").forEachIndexed { index, label ->
+            SegmentedButton(selected = progress == (index == 1),
+                onClick = { focus.clearFocus(); progress = index == 1 },
+                shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(label) }
         }
     }
-    val active = listOfNotNull(filter, direction, status).size
+    val active = listOfNotNull(filter, direction, status, language).size
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         TagMenu(order.label, LibraryOrder.entries.map { it.label }) { choice -> order = LibraryOrder.entries.first { it.label == choice } }
         OutlinedButton(onClick = { focus.clearFocus(); filters = true }) { Text(if (active == 0) "Filters" else "Filters ($active)") }
         TextButton(onClick = onAdd) { Text(stringResource(R.string.ui_add_card)) }
+        if (model != null) CardPackActions(visible.map { it.card }, model::importCards)
     }
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(stringResource(R.string.ui_organise_library)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -78,9 +85,19 @@ internal fun Library(
             TagMenu(status ?: "All states", listOf("All states", "New", "Learning", "Review", "Relearning")) { status = it.takeUnless { s -> s == "All states" } }
             Text(stringResource(R.string.ui_tags))
             TagMenu(filter ?: "All tags", knownTags) { onFilter(it) }
-            TextButton(onClick = { status = null; direction = null; onFilter(null) }) { Text(stringResource(R.string.ui_clear_filters)) }
+            Text("Translation language")
+            TagMenu(language?.let(::languageName) ?: "All languages", listOf("All languages", "Spanish", "Japanese")) {
+                language = when (it) { "Spanish" -> "es"; "Japanese" -> "ja"; else -> null }
+            }
+            TextButton(onClick = { language = null; status = null; direction = null; onFilter(null) }) { Text(stringResource(R.string.ui_clear_filters)) }
         }
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text(stringResource(R.string.ui_done)) } })
+    if (active > 0) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        direction?.let { ActiveLibraryFilter("Direction · ${it.labelFor(cards.translationLabel())}") { direction = null } }
+        status?.let { ActiveLibraryFilter("State · $it") { status = null } }
+        language?.let { ActiveLibraryFilter(languageName(it)) { language = null } }
+        filter?.let { ActiveLibraryFilter("Tag · $it") { onFilter(null) } }
+    }
     if (filter != null) TextButton(onClick = { onPractice(filter) }) { Text(stringResource(R.string.ui_practise_this_tag)) }
     if (deleteFailed) Text(stringResource(R.string.ui_could_not_delete_the_card_please_try_again), color = MaterialTheme.colorScheme.error)
     if (visible.isEmpty()) Text(if (cards.isEmpty()) "Your library is empty." else "No matching cards.")
@@ -150,6 +167,12 @@ internal fun Library(
                 }
             }) { Text(stringResource(R.string.ui_delete)) } })
     }
+}
+
+@Composable
+private fun ActiveLibraryFilter(label: String, remove: () -> Unit) {
+    InputChip(selected = true, onClick = remove, label = { Text(label) },
+        trailingIcon = { Text("×", modifier = Modifier.semantics { contentDescription = "Remove $label filter" }) })
 }
 
 @Composable

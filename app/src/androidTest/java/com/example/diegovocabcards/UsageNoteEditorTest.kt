@@ -167,7 +167,7 @@ class UsageNoteEditorTest {
             releaseFlight.complete(Unit)
             compose.waitUntil(5000) { removalStarted.isCompleted }
             compose.onNodeWithText(note.meaning).assertDoesNotExist()
-            compose.onNodeWithText("Headword").performScrollTo().performTextReplacement("get fired")
+            compose.onNodeWithText("English word or phrase").performScrollTo().performTextReplacement("get fired")
             releaseRemoval.complete(Unit)
             waitFor(work.definition)
             tap(work.definition)
@@ -266,7 +266,7 @@ class UsageNoteEditorTest {
             compose.waitUntil { started.isCompleted }
             tap("Save and add another")
             compose.waitUntil { model.saved?.next == AfterSave.AnotherCard }
-            compose.onNodeWithText("Headword").assertTextContains("")
+            compose.onNodeWithText("English word or phrase").assertTextContains("")
             release.complete(Unit)
             compose.waitUntil(5000) {
                 runBlocking { db.vocabulary().cards().first().singleOrNull()?.usageNote == note.forStorage() }

@@ -30,6 +30,9 @@ internal abstract class ReviewDao {
             WHERE h.senseId = e.senseId AND h.direction = e.direction)""")
     abstract fun schedules(): Flow<List<Schedule>>
 
+    @Query("SELECT reviewedAt FROM ReviewEvent WHERE reviewedAt >= :start")
+    abstract fun recentRatingsSince(start: Long): Flow<List<Long>>
+
     @Query("""SELECT * FROM ReviewEvent WHERE senseId = :id AND direction = :direction
         ORDER BY turn DESC LIMIT 1""")
     abstract suspend fun latest(id: String, direction: Direction): ReviewEvent?

@@ -29,7 +29,7 @@ internal val LocalStudyCards = compositionLocalOf { emptyList<Card>() }
 internal val LocalAutomaticSpeech = compositionLocalOf { true }
 
 private enum class Screen(val title: String) {
-    Home("Home"), Library("Library"), Add("Add card"),
+    Home("Home"), Sample("Sample review"), Library("Library"), Add("Add card"),
     Review("Review"), Study("Review"), Manual("Manual practice"), Settings("Settings"), ReviewOptions("Review intervals"), Edit("Edit card")
 }
 
@@ -49,9 +49,12 @@ internal fun VocabCardsApp(
     onVoiceChange: (String) -> Unit = {},
     onAutomaticSpeech: (Boolean) -> Unit = {},
     dictionaryLookup: (suspend (String) -> List<Suggestion>)? = null,
+    sharedText: String? = null,
+    onSharedTextHandled: () -> Unit = {},
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
+    val exitGuard = remember { EditorExitGuard() }
     val home = screen == Screen.Home
     val rows by model.cards.collectAsState(initial = null)
     val scheduleFlow = remember(model) { model.reviews.schedules() }
@@ -90,8 +93,11 @@ internal fun VocabCardsApp(
     var draftNumber by rememberSaveable { mutableIntStateOf(0) }
     var seedEnglish by rememberSaveable { mutableStateOf("") }
     var seedTags by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    var draftLanguage by rememberSaveable { mutableStateOf(backupDefaults.language) }
+    var sampleLanguage by rememberSaveable { mutableStateOf(backupDefaults.language) }
     var parent by rememberSaveable { mutableStateOf(Screen.Home) }
-    fun newDraft(english: String, tags: List<String>?, from: Screen) {
+    fun newDraft(english: String, tags: List<String>?, from: Screen, language: String = backupDefaults.language) {
+        draftLanguage = language
         seedEnglish = english
         seedTags = tags?.let { ArrayList(it) }
         parent = from
@@ -108,11 +114,40 @@ internal fun VocabCardsApp(
         Screen.Manual -> if (manualTag != null) Screen.Library else Screen.Review
         else -> Screen.Home
     }
-    val back = {
+    val leave = {
         if (!model.saving && model.saved == null) {
             if (screen == Screen.Manual || screen == Screen.Study) sessionState.removeState(screen.name)
             screen = backTo
         }
+    }
+    val back = {
+        if (!model.saving && model.saved == null) {
+            if (screen == Screen.Add || screen == Screen.Edit) {
+                exitGuard.request?.invoke(leave) ?: leave()
+            } else leave()
+        }
+    }
+    val isEditor = screen == Screen.Add || screen == Screen.Edit
+    LaunchedEffect(sharedText, isEditor, model.saving, model.saved) {
+        if (sharedText != null && !isEditor && !model.saving && model.saved == null) {
+            newDraft(sharedText, null, screen)
+            onSharedTextHandled()
+        }
+    }
+    sharedText?.takeIf { isEditor }?.let { text ->
+        AlertDialog(onDismissRequest = onSharedTextHandled,
+            title = { Text("Open a draft from shared text?") },
+            text = { Text(text) },
+            confirmButton = { TextButton(enabled = !model.saving, onClick = {
+                val open = {
+                    newDraft(text, null, if (screen in listOf(Screen.Add, Screen.Edit)) backTo else screen)
+                    onSharedTextHandled()
+                }
+                exitGuard.request?.invoke(open) ?: open()
+                onSharedTextHandled()
+            }) { Text("Open draft") } },
+            dismissButton = { TextButton(onClick = onSharedTextHandled) { Text("Cancel") } }
+        )
     }
     BackHandler(enabled = !home, onBack = back)
     LaunchedEffect(model.saved) {
@@ -125,8 +160,8 @@ internal fun VocabCardsApp(
                     screen = Screen.Library
                 }
                 AfterSave.Study -> screen = editOrigin
-                AfterSave.AnotherCard -> newDraft("", card.tags, Screen.Library)
-                AfterSave.AnotherSense -> newDraft(card.english, card.tags, Screen.Library)
+                AfterSave.AnotherCard -> newDraft("", card.tags, Screen.Library, card.language)
+                AfterSave.AnotherSense -> newDraft(card.english, card.tags, Screen.Library, card.language)
             }
             model.acknowledgeSave()
         }
@@ -175,7 +210,7 @@ internal fun VocabCardsApp(
             val scroll = rememberScrollState()
             Column(
                 Modifier.fillMaxSize().padding(insets).consumeWindowInsets(insets).imePadding()
-                    .then(if (screen in listOf(Screen.Library, Screen.Study, Screen.Manual, Screen.Add, Screen.Edit)) Modifier
+                    .then(if (screen in listOf(Screen.Library, Screen.Study, Screen.Manual, Screen.Sample, Screen.Add, Screen.Edit)) Modifier
                         else Modifier.verticalScroll(scroll))
                     .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -187,26 +222,34 @@ internal fun VocabCardsApp(
                 }
                 when (screen) {
                     Screen.Home -> {
-                        ReviewDirections(queues, home = true, onStart = ::startStudy)
-                        OutlinedButton(onClick = { add(Screen.Home) }, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.ui_add_card))
+                        if (cards?.isEmpty() == true) {
+                            FirstCardOptions(backupDefaults.language,
+                                onLanguage = { code -> model.configure(backupDefaults) { it.copy(language = code) } },
+                                onAdd = { newDraft("", null, Screen.Home, it) },
+                                onSample = { sampleLanguage = it; screen = Screen.Sample })
+                        } else {
+                            ReviewDirections(queues, home = true, onStart = ::startStudy)
+                            OutlinedButton(onClick = { add(Screen.Home) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(stringResource(R.string.ui_add_card))
+                            }
+                            if (cards?.isNotEmpty() == true) StudyActivity(model.reviews, clock)
                         }
                     }
                     Screen.Library -> sessionState.SaveableStateProvider(Screen.Library.name) {
                         var progressId by rememberSaveable { mutableStateOf<String?>(null) }
                         progressId?.let { ReviewDetails(it, model.reviews) { progressId = null } }
-                        Library(cards.orEmpty(), knownTags, highlighted, onAdd = { add(Screen.Library) },
-                        schedules = schedules.orEmpty(), onAnother = { newDraft(it.english, it.tags, Screen.Library) }, onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it },
+                        Library(cards.orEmpty(), knownTags, highlighted, model = model, onAdd = { add(Screen.Library) },
+                        schedules = schedules.orEmpty(), onAnother = { newDraft(it.english, it.tags, Screen.Library, it.language) }, onEdit = ::editCard, onDelete = model::deleteSense, onProgress = { progressId = it },
                             filter = libraryTag, onFilter = { libraryTag = it },
                             onPractice = { manualTag = it; screen = Screen.Manual })
                     }
-                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model, language = backupDefaults.language, lookup = dictionaryLookup, usageNotes = guideGenerator,
+                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model, language = draftLanguage, lookup = dictionaryLookup, usageNotes = guideGenerator, exitGuard = exitGuard,
                         onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
                         TextButton(onClick = { showProgress = true }) { Text(stringResource(R.string.ui_review_history)) }
                         if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
-                        CardEditor(original, original.english, original.tags, knownTags, model, language = original.language, lookup = dictionaryLookup, usageNotes = guideGenerator,
+                        CardEditor(original, original.english, original.tags, knownTags, model, language = original.language, lookup = dictionaryLookup, usageNotes = guideGenerator, exitGuard = exitGuard,
                             onOpenExisting = { editId = it },
                             fromStudy = editOrigin == Screen.Study || editOrigin == Screen.Manual) {
                             newDraft(it.english, it.tags, Screen.Library)
@@ -222,6 +265,7 @@ internal fun VocabCardsApp(
                             }
                         }
                     }
+                    Screen.Sample -> SampleReview(sampleLanguage)
                     Screen.Manual -> sessionState.SaveableStateProvider(Screen.Manual.name) {
                         val selectedCards = cards.orEmpty().filter { card ->
                             manualTag == null || card.tags.any { it.equals(manualTag, true) }

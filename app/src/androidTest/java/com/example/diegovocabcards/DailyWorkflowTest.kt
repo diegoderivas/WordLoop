@@ -30,7 +30,7 @@ class DailyWorkflowTest {
             val model = VocabularyModel(app, db)
             compose.setContent { if (showing.value) VocabCardsApp(Appearance.Light, model) {} }
             tap("Add card")
-            enter("Headword", "fire")
+            enter("English word or phrase", "fire")
             compose.onNodeWithText("View cards (1)", substring = true).assertExists()
             enter("Spanish translation", "fuego")
             tap("Card details")
