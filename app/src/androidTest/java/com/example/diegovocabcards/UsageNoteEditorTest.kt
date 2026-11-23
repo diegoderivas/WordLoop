@@ -172,7 +172,8 @@ class UsageNoteEditorTest {
             waitFor(work.definition)
             tap(work.definition)
             tap("Usage guide")
-            waitFor("Gemini Nano is unavailable", substring = true)
+            waitFor(UNSUPPORTED_GUIDE)
+            tap("OK")
             compose.onNodeWithText("Late result for removing clothes.").assertDoesNotExist()
             tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
@@ -217,6 +218,7 @@ class UsageNoteEditorTest {
             waitFor(ruefully.definition)
             tap(ruefully.definition)
             tap("Usage guide")
+            tap("Generate again")
             waitFor("Retry guide")
             compose.onNodeWithText(legacy).assertExists()
             tap("Retry guide")

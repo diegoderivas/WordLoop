@@ -73,7 +73,7 @@ internal fun ReviewDirections(
             Text(if (home) "Today’s review" else "Today", style = MaterialTheme.typography.titleLarge)
             Text(androidx.compose.ui.res.pluralStringResource(R.plurals.questions, mixed.ready.size, mixed.ready.size))
             if (home) for (side in listOf(Direction.EN_ES, Direction.ES_EN)) {
-                SummaryRow(side.label, queues.getValue(side).ready.size)
+                SummaryRow(side.labelFor(LocalStudyCards.current.translationLabel()), queues.getValue(side).ready.size)
             } else {
                 SummaryRow("Learning", mixed.ready.count { it.learning })
                 SummaryRow("Due for review", mixed.dueCount - mixed.ready.count { it.learning })
@@ -91,7 +91,7 @@ internal fun ReviewDirections(
         val queue = queues.getValue(direction)
         OutlinedButton(onClick = { onStart(direction) }, modifier = Modifier.fillMaxWidth(),
             enabled = queue.ready.isNotEmpty()) {
-            Text(direction.label)
+            Text(direction.labelFor(LocalStudyCards.current.translationLabel()))
         }
         Text("Due: ${queue.dueCount} · New: ${queue.newCount}", style = MaterialTheme.typography.bodySmall)
         if (queue.ready.isEmpty()) queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
@@ -165,7 +165,7 @@ private fun StudyQuestion(
     val at = revealedAt
     StudyPresentation(
         card, spanishFirst, revealed = at != null,
-        caption = "${direction.label} · ${completed + 1} of ${completed + remaining}",
+        caption = "${direction.labelFor(languageName(card.language))} · ${completed + 1} of ${completed + remaining}",
         onReveal = { revealedAt = clock.millis() }, cardTools = cardTools
     ) {
         if (at != null) {

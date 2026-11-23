@@ -11,7 +11,8 @@ internal data class LibrarySettings(
     val theme: String = "system",
     val automaticSpeech: Boolean = true,
     val voice: String = "",
-    @Embedded val review: ReviewSettings = ReviewSettings()
+    @Embedded val review: ReviewSettings = ReviewSettings(),
+    @ColumnInfo(defaultValue = "'es'") val language: String = "es"
 )
 
 internal data class LibraryBackup(
@@ -22,6 +23,7 @@ internal data class LibraryBackup(
     val settings: LibrarySettings
 ) {
     fun validate() {
+        require(settings.language in setOf("es", "ja") && senses.all { it.language in setOf("es", "ja") })
         require(settings.id == 1 && settings.review.isValid && settings.theme in setOf("system", "light", "dark"))
         val entryIds = entries.map { it.entryId }.toSet()
         require(entryIds.size == entries.size && entries.all { it.entryId > 0 && it.english.isNotBlank() })

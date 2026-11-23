@@ -10,7 +10,7 @@ import java.security.MessageDigest
 /** Version 2 omits shared categories. Version 1 remains readable. Integers and IEEE doubles use DataOutput's big-endian encoding. */
 internal object BackupFormat {
     private const val MAGIC = "DiegoVocabCards"
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val MAX_BYTES = 64 * 1024 * 1024
 
     private fun DataOutputStream.string(value: String) {
@@ -47,6 +47,7 @@ internal object BackupFormat {
                 writeInt(nextLearningMinutes)
                 writeInt(relearningMinutes)
             }
+            string(settings.language)
             writeInt(backup.entries.size)
             for (entry in backup.entries) {
                 writeLong(entry.entryId)
@@ -57,7 +58,7 @@ internal object BackupFormat {
                 string(id)
                 writeLong(entryId)
                 listOf(spanish, example, definition, synonyms, senseCategories, source, usageNote,
-                    generatedExamples, ipa, ipaSource).forEach { string(it) }
+                    generatedExamples, ipa, ipaSource, language).forEach { string(it) }
             }
             writeInt(backup.tags.size)
             for (tag in backup.tags) {
@@ -102,7 +103,7 @@ internal object BackupFormat {
         require(input.read() == -1 && MessageDigest.isEqual(checksum, MessageDigest.getInstance("SHA-256").digest(payload)))
         return DataInputStream(ByteArrayInputStream(payload)).run {
             val settings = LibrarySettings(theme = string(), automaticSpeech = readBoolean(), voice = string(),
-                review = ReviewSettings(readInt(), readInt(), readInt(), readInt()))
+                review = ReviewSettings(readInt(), readInt(), readInt(), readInt()), language = if (version >= 3) string() else "es")
             val entries = rows {
                 val entry = Entry(readLong(), string())
                 if (version == 1) string() // Consume and discard the retired category.
@@ -111,7 +112,7 @@ internal object BackupFormat {
             val senses = rows {
                 Sense(id = string(), entryId = readLong(), spanish = string(), example = string(),
                     definition = string(), synonyms = string(), senseCategories = string(), source = string(),
-                    usageNote = string(), generatedExamples = string(), ipa = string(), ipaSource = string())
+                    usageNote = string(), generatedExamples = string(), ipa = string(), ipaSource = string(), language = if (version >= 3) string() else "es")
             }
             val tags = rows { CardTag(string(), string()) }
             val events = rows {

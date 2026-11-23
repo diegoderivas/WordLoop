@@ -54,7 +54,7 @@ internal class VocabularyModel(app: Application, private val database: Vocabular
         viewModelScope.launch {
             try {
                 dao.save(card.id, card.english, card.spanish, card.example, card.tags.joinToString(","), card.definition, card.synonyms, card.senseCategories,
-                    card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource)
+                    card.source, card.usageNote, card.generatedExamples, card.ipa, card.ipaSource, card.language)
                 if (card.usageNote.isEmpty() && pendingGuide != null) {
                     viewModelScope.launch {
                         val ready = pendingGuide.await() as? UsageNoteResult.Ready ?: return@launch

@@ -49,7 +49,7 @@ internal fun interface UsageNoteGenerator {
 }
 
 internal fun usageNotePrompt(term: String, sense: Suggestion): String = buildString {
-    appendLine("Write a short learner's guide for the single English sense below. Write EVERY field in clear English, even if the input contains Spanish.")
+    appendLine("Write a short learner's guide for the single English sense below. Write EVERY field in clear English, even if the input contains a non-English translation.")
     appendLine("Use these labels, one field per line. No introduction or placeholders.")
     appendLine("MEANING: 2–3 complete sentences. Explain what the expression communicates here. Where relevant, explain the feeling, implication, or tone.")
     appendLine("HOW TO USE IT: Give natural collocations or phrases and explain when they fit. Avoid generic grammar rules.")
@@ -63,7 +63,7 @@ internal fun usageNotePrompt(term: String, sense: Suggestion): String = buildStr
     appendLine("Category: ${sense.category.oneLine().take(80)}")
     appendLine("Definition: ${sense.definition.oneLine().take(400)}")
     sense.usage.takeIf(String::isNotBlank)?.let { appendLine("Usage label: ${it.oneLine().take(120)}") }
-    sense.spanish.firstOrNull()?.let { appendLine("Spanish gloss (context): ${it.oneLine().take(120)}") }
+    sense.spanish.firstOrNull()?.let { appendLine("${languageName(sense.language)} gloss (context): ${it.oneLine().take(120)}") }
     sense.examples.take(2).forEach { appendLine("Dictionary example: ${it.oneLine().take(220)}") }
 }
 
@@ -118,10 +118,28 @@ internal suspend fun validateUsageNote(response: String): UsageNote? {
 }
 
 internal object NanoUsageNotes : UsageNoteGenerator {
+    @Volatile internal var unsupported = false
+        private set
+
+    fun recordStatus(status: Int): Int {
+        if (status == FeatureStatus.UNAVAILABLE) unsupported = true
+        return status
+    }
+
+    suspend fun checkUnsupported(): Boolean {
+        if (unsupported) return true
+        return try {
+            val model = Generation.getClient()
+            try { withTimeoutOrNull(15_000) { recordStatus(model.checkStatus()) } == FeatureStatus.UNAVAILABLE }
+            finally { model.close() }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { false }
+    }
+
     override suspend fun generate(
         prompt: String, download: Boolean, onProgress: (UsageNoteProgress) -> Unit
     ): UsageNoteResult = try {
-        generateWithModel(prompt, download, onProgress)
+        if (unsupported) UsageNoteResult.Unavailable else generateWithModel(prompt, download, onProgress)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Exception) {
@@ -152,7 +170,7 @@ internal object NanoUsageNotes : UsageNoteGenerator {
                     }
                     if (downloaded != true) return UsageNoteResult.Error
                 }
-                FeatureStatus.UNAVAILABLE -> return UsageNoteResult.Unavailable
+                FeatureStatus.UNAVAILABLE -> { unsupported = true; return UsageNoteResult.Unavailable }
                 else -> return UsageNoteResult.Error
             }
             onProgress(UsageNoteProgress.Generating)

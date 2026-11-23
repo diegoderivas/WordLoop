@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WiktionaryTest {
+    @Test fun japaneseEquivalentsUseTheSelectedGlossAndOmitRubyReadings() {
+        val html = """<div class="mw-parser-output"><h2>English</h2><h3>Verb</h3>
+            <ol><li>To produce flowers.</li><li>To thrive.</li></ol>
+            <table class="translations" data-gloss="to produce flowers"><tr><td><ul>
+            <li>Spanish: <span lang="es">florecer</span></li>
+            <li>Japanese: <span lang="ja"><ruby>咲<rt>さ</rt></ruby>く</span></li>
+            </ul></td></tr></table></div>"""
+        val ja = Wiktionary.parse(html, "source", "bloom", "bloom", language = "ja")
+        assertEquals(listOf("咲く"), ja.single { "flowers" in it.definition }.spanish)
+        assertTrue(ja.single { "thrive" in it.definition }.spanish.isEmpty())
+        assertEquals(listOf("florecer"), Wiktionary.parse(html,"source","bloom","bloom").first().spanish)
+    }
+
     @Test fun liveWiktionaryCoverage() {
         org.junit.Assume.assumeTrue(System.getenv("VOCAB_LIVE_DICTIONARY") == "1")
         val requests = listOf("fire", "get fired", "hire", "run", "take off", "look up", "brush up on")

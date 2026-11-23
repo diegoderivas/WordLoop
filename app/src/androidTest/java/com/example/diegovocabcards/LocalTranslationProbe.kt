@@ -7,6 +7,12 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class LocalTranslationProbe {
+    @Test fun japaneseBloomOnDevice() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("liveJapanese") == "true")
+        val answer = LocalSenseTranslation.suggest("bloom", Suggestion("To produce flowers.", "verb", "", language = "ja"))
+        org.junit.Assert.assertTrue("Japanese model returned $answer", answer in setOf("咲く", "花が咲く", "開花する", "花開く"))
+    }
+
     @Test fun contextualEquivalentsOnDevice() = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("liveTranslation") == "true")
         for ((expression, meaning, expected) in listOf(

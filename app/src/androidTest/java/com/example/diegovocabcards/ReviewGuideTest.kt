@@ -21,12 +21,7 @@ class ReviewGuideTest {
     private val note = UsageNote("You lose your job. Your employer decides you must leave.",
         "Use get fired from a job or get fired for doing something.", listOf("He got fired last week."))
 
-    private fun tap(label: String) {
-        compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        val node = compose.onNode(hasText(label) and hasClickAction())
-        if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
-        node.performClick()
-    }
+    private fun tap(label: String) = compose.tapControl(label)
 
     @Test fun editRetryGenerateAndReopenKeepBothSchedulesAndAllOtherFields() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
@@ -49,7 +44,7 @@ class ReviewGuideTest {
             val generator = UsageNoteGenerator { prompt, _, _ ->
                 assertTrue("Expression: get fired" in prompt && "Lose one's employment." in prompt)
                 assertTrue("que te despidan" in prompt)
-                if (++calls == 1) UsageNoteResult.Unavailable else UsageNoteResult.Ready(note)
+                if (++calls == 1) UsageNoteResult.Error else UsageNoteResult.Ready(note)
             }
             compose.setContent { active?.let { key(it) { VocabCardsApp(Appearance.Light, it, guideGenerator = generator) {} } } }
             tap("Start review")

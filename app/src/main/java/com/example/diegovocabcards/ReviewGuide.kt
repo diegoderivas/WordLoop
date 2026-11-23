@@ -17,6 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
+internal const val UNSUPPORTED_GUIDE = "This device doesn’t support automatic usage guide generation."
+
 @Composable
 internal fun ReviewCardTools(card: Card, model: VocabularyModel, generator: UsageNoteGenerator, onEdit: () -> Unit) {
     var open by rememberSaveable(card.id) { mutableStateOf(false) }
@@ -45,7 +47,7 @@ private fun ReviewGuideDialog(
         status = null
         progress = UsageNoteProgress.Checking
         val sense = Suggestion(card.definition, card.senseCategories, card.source, listOf(card.spanish),
-            (card.example.lines() + card.generatedExamples.lines()).filter(String::isNotBlank))
+            (card.example.lines() + card.generatedExamples.lines()).filter(String::isNotBlank), language = card.language)
         try {
             val result = generator.generate(usageNotePrompt(card.english, sense), download) { progress = it }
             currentCoroutineContext().ensureActive()
@@ -69,7 +71,7 @@ private fun ReviewGuideDialog(
                     Text(when (status) {
                         UsageNoteResult.Downloadable -> "Download Gemini Nano to prepare the guide."
                         UsageNoteResult.Downloading -> "Gemini Nano is downloading."
-                        UsageNoteResult.Unavailable -> "Gemini Nano is unavailable on this device."
+                        UsageNoteResult.Unavailable -> UNSUPPORTED_GUIDE
                         UsageNoteResult.Error -> "Could not save a guide for this meaning."
                         is UsageNoteResult.Ready -> "Opening saved guide…"
                         null -> when (progress) {
@@ -78,12 +80,12 @@ private fun ReviewGuideDialog(
                             UsageNoteProgress.Generating -> "Preparing guide…"
                         }
                     })
-                    if (status != null && status !is UsageNoteResult.Ready) {
+                    if (status != null && status != UsageNoteResult.Unavailable && status !is UsageNoteResult.Ready) {
                         TextButton(onClick = { download = status == UsageNoteResult.Downloadable; attempt++ }) {
                             Text(if (status == UsageNoteResult.Downloadable) "Download model" else "Retry")
                         }
                     }
                 }
             }
-        }, confirmButton = { TextButton(onClick = close) { Text(stringResource(R.string.ui_back_to_review)) } })
+        }, confirmButton = { TextButton(onClick = close) { Text(if (card.usageNote.isBlank() && status == UsageNoteResult.Unavailable) "OK" else stringResource(R.string.ui_back_to_review)) } })
 }

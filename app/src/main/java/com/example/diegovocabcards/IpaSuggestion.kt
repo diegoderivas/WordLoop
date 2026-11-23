@@ -44,7 +44,7 @@ internal fun ipaPrompt(context: IpaContext): String = buildString {
     field("Definition", context.definition)
     field("Usage", context.usage)
     field("Example", context.example)
-    field("Spanish meaning", context.spanish)
+    field("Translation", context.spanish)
 }
 
 // Allow phonemes, stress marks and word spaces, with a single pair of slash delimiters.

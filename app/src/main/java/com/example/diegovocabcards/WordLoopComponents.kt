@@ -72,3 +72,8 @@ internal fun sourceDisplay(line: String): String = when (line) {
     else -> line.replace("Colaboradores de Wiktionary", "Wiktionary contributors")
         .replace("Wiktionary vía Free Dictionary API", "Wiktionary via Free Dictionary API")
 }
+
+internal fun languageName(code: String) = if (code == "ja") "Japanese" else "Spanish"
+
+internal fun List<com.example.diegovocabcards.data.Card>.translationLabel(): String =
+    map { it.language }.distinct().let { if (it.size > 1) "Translation" else languageName(it.firstOrNull() ?: "es") }

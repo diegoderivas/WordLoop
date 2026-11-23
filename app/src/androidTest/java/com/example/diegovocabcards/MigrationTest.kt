@@ -16,6 +16,22 @@ import org.junit.Test
 import java.util.UUID
 
 class MigrationTest {
+    @Test fun existingSpanishCardRetainsManualIpaGuideAndReview() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "spanish-${UUID.randomUUID()}.db"
+        createLegacy(name, 7) { old ->
+            old.execSQL("INSERT INTO Entry VALUES (1,'bloom')")
+            old.execSQL("INSERT INTO Sense(id,entryId,spanish,example,ipa,ipaSource,usageNote) VALUES ('b',1,'florecer','','/bluːm/','manual','Saved guide')")
+            old.execSQL("INSERT INTO ReviewEvent VALUES ('b','EN_ES',1,'GOOD','REVIEW',NULL,3.0,6.0,1800000000000,1790000000000)")
+        }
+        val db = Room.databaseBuilder(context, VocabularyDatabase::class.java, name).build()
+        try {
+            val card = db.vocabulary().cards().first().single()
+            assertEquals(listOf("es","florecer","/bluːm/","Saved guide"), listOf(card.language,card.spanish,card.ipa,card.usageNote))
+            assertEquals(1800000000000L, db.reviews().latest(card.id,Direction.EN_ES)!!.memory.dueAt)
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun preservesVersionOneAndNewContextAfterReopening() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext

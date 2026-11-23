@@ -8,7 +8,8 @@ import java.time.Duration
 import java.time.Instant
 
 internal enum class Direction(val label: String) {
-    ES_EN("Spanish → English"), EN_ES("English → Spanish")
+    ES_EN("Spanish → English"), EN_ES("English → Spanish");
+    fun labelFor(language: String) = if (this == EN_ES) "English → $language" else "$language → English"
 }
 
 /** Snapshot after a rating. An absent snapshot means this sense/direction is new. */

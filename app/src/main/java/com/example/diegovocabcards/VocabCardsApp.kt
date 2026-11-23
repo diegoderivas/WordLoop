@@ -48,7 +48,7 @@ internal fun VocabCardsApp(
     backupDefaults: com.example.diegovocabcards.data.LibrarySettings = com.example.diegovocabcards.data.LibrarySettings(),
     onVoiceChange: (String) -> Unit = {},
     onAutomaticSpeech: (Boolean) -> Unit = {},
-    dictionaryLookup: suspend (String) -> List<Suggestion> = Dictionary::lookup,
+    dictionaryLookup: (suspend (String) -> List<Suggestion>)? = null,
     onModeChange: (Appearance) -> Unit
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
@@ -196,13 +196,13 @@ internal fun VocabCardsApp(
                             filter = libraryTag, onFilter = { libraryTag = it },
                             onPractice = { manualTag = it; screen = Screen.Manual })
                     }
-                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model, lookup = dictionaryLookup, usageNotes = guideGenerator,
+                    Screen.Add -> CardEditor(null, seedEnglish, seedTags ?: cards?.firstOrNull()?.tags.orEmpty(), knownTags, model, language = backupDefaults.language, lookup = dictionaryLookup, usageNotes = guideGenerator,
                         onOpenExisting = { editId = it; editOrigin = Screen.Library; screen = Screen.Edit }) {}
                     Screen.Edit -> cards?.find { it.id == editId }?.let { original ->
                         var showProgress by rememberSaveable(original.id) { mutableStateOf(false) }
                         TextButton(onClick = { showProgress = true }) { Text(stringResource(R.string.ui_review_history)) }
                         if (showProgress) ReviewDetails(original.id, model.reviews) { showProgress = false }
-                        CardEditor(original, original.english, original.tags, knownTags, model, lookup = dictionaryLookup, usageNotes = guideGenerator,
+                        CardEditor(original, original.english, original.tags, knownTags, model, language = original.language, lookup = dictionaryLookup, usageNotes = guideGenerator,
                             onOpenExisting = { editId = it },
                             fromStudy = editOrigin == Screen.Study || editOrigin == Screen.Manual) {
                             newDraft(it.english, it.tags, Screen.Library)
@@ -237,6 +237,12 @@ internal fun VocabCardsApp(
                         } else Text(stringResource(R.string.ui_loading_reviews))
                     }
                     Screen.Settings -> {
+                        Section {
+                            Text("Translation language", style = MaterialTheme.typography.titleMedium)
+                            TagMenu(languageName(backupDefaults.language), listOf("Spanish", "Japanese")) { name ->
+                                model.configure(backupDefaults) { it.copy(language = if (name == "Japanese") "ja" else "es") }
+                            }
+                        }
                         Section { AppearanceOptions(mode, onModeChange) }
                         Section {
                         Text(stringResource(R.string.ui_pronunciation), style = MaterialTheme.typography.titleMedium)

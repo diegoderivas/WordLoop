@@ -55,12 +55,13 @@ internal fun mergeMeaningFields(
 @Composable
 internal fun CardEditor(
     original: Card?, initialEnglish: String, initialTags: List<String>, knownTags: List<String>,
-    model: VocabularyModel, lookup: suspend (String) -> List<Suggestion> = Dictionary::lookup,
+    model: VocabularyModel, lookup: (suspend (String) -> List<Suggestion>)? = null,
     translate: suspend (String, Suggestion) -> String? = LocalSenseTranslation::suggest,
     nanoOptions: suspend (String, Suggestion, SenseRequest) -> List<String> = ::nanoSenseOptions,
     usageNotes: UsageNoteGenerator = NanoUsageNotes,
     ipaSuggestion: suspend (IpaContext) -> String? = ::suggestIpa,
     fromStudy: Boolean = false,
+    language: String = original?.language ?: "es",
     onOpenExisting: (String) -> Unit = {},
     onAnotherSense: (Card) -> Unit
 ) {
@@ -149,7 +150,7 @@ internal fun CardEditor(
     // A saved card also supplies a context for manually requested translations.
     val providerSense = selected ?: original?.takeIf { it.english == currentQuery }?.let {
         Suggestion(it.definition.ifBlank { it.spanish }, it.senseCategories, it.source,
-            examples = it.example.lines().filter(String::isNotBlank))
+            examples = it.example.lines().filter(String::isNotBlank), language = language)
     }
     val providers = providerSense?.let(requests::forSense)
     fun requestGoogle(retry: Boolean = false) {
@@ -172,7 +173,8 @@ internal fun CardEditor(
         }
     }
     fun requestGuide(retry: Boolean = false, download: Boolean = false) {
-        val sense = selected ?: return
+        if (usageNote.isNotBlank() && !retry) return
+        val sense = providerSense ?: return
         providers?.guide?.start(retry, UsageNoteResult.Error) {
             requests.nano.withLock { usageNotes.generate(usageNotePrompt(currentQuery, sense), download) {} }
         }
@@ -227,7 +229,7 @@ internal fun CardEditor(
             kotlinx.coroutines.delay(600)
             queryState = "Looking up meanings…"
             try {
-                val result = distinctMeanings(lookup(currentQuery))
+                val result = distinctMeanings(lookup?.invoke(currentQuery) ?: Dictionary.lookup(currentQuery, language))
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 suggestions = result
                 lookupSucceeded = true
@@ -338,7 +340,7 @@ internal fun CardEditor(
     val draft = Card(id, english.trim(), spanish.trim(), example.trim(), effectiveTags, definition,
         synonyms, senseCategories,
         storedAttribution(combineSources(retainedSource, activeSource, translationSource, synonymSource, exampleSource)),
-        if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, formattedIpa(ipa), ipaSource)
+        if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() }, generatedExamples, formattedIpa(ipa), ipaSource, language)
     fun addPending() {
         tags = ArrayList(effectiveTags)
         pending = ""
@@ -374,7 +376,7 @@ internal fun CardEditor(
                 }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
                 label = { Text(stringResource(R.string.ui_pronunciation_ipa)) }, placeholder = { Text("/…/") })
             }
-            val matches = localCards.filter { it.id != original?.id && currentQuery.isNotBlank() &&
+            val matches = localCards.filter { it.language == language && it.id != original?.id && currentQuery.isNotBlank() &&
                 senseText(it.english) == senseText(currentQuery) }
             var viewingMatches by rememberSaveable(currentQuery) { mutableStateOf(false) }
             if (matches.isNotEmpty()) {
@@ -462,7 +464,7 @@ internal fun CardEditor(
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-                    label = { Text(stringResource(R.string.ui_spanish_translation)) }, singleLine = true)
+                    label = { Text("${languageName(language)} translation") }, singleLine = true)
                     if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
                         TranslationAttribution()
                     } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
@@ -504,10 +506,27 @@ internal fun CardEditor(
                 }
             }
             var guideExpanded by rememberSaveable { mutableStateOf(false) }
+            var guideTap by remember(id, currentQuery, selectedKey) { mutableStateOf(false) }
+            var unsupportedHere by remember { mutableStateOf(false) }
+            LaunchedEffect(guideTap, providerSense) {
+                if (guideTap && providerSense == null && usageNote.isBlank() && usageNotes === NanoUsageNotes)
+                    unsupportedHere = NanoUsageNotes.checkUnsupported()
+            }
+            if (guideTap && usageNote.isBlank() && (unsupportedHere || providers?.guide?.result == UsageNoteResult.Unavailable || (usageNotes === NanoUsageNotes && NanoUsageNotes.unsupported))) {
+                AlertDialog(onDismissRequest = { guideTap = false }, text = { Text(UNSUPPORTED_GUIDE) },
+                    confirmButton = { TextButton(onClick = { guideTap = false }) { Text("OK") } })
+            }
             Section {
-                TextButton(onClick = { guideExpanded = !guideExpanded }) { Text(stringResource(R.string.ui_usage_guide)) }
+                TextButton(onClick = {
+                    guideExpanded = !guideExpanded
+                    guideTap = guideExpanded
+                    if (guideExpanded && usageNote.isBlank() && providers?.guide?.result == null) requestGuide()
+                }) { Text(stringResource(R.string.ui_usage_guide)) }
                 if (guideExpanded) {
-                    if (selected != null && providers != null) {
+                    if (usageNote.isNotBlank() && providerSense != null && providers?.guide?.result == null && providers?.guide?.loading == false && !(usageNotes === NanoUsageNotes && NanoUsageNotes.unsupported)) {
+                        TextButton(onClick = { requestGuide(retry = true) }) { Text("Generate again") }
+                    }
+                    if ((usageNote.isBlank() || providers?.guide?.result != null) && providers != null && providers.guide.result != UsageNoteResult.Unavailable) {
                         UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) }, enabled = !busy,
                         onAddExample = { generated ->
                             if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {

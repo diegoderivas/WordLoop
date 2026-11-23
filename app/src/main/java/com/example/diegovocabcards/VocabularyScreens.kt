@@ -56,7 +56,7 @@ internal fun Library(
             lastHighlighted = highlighted
         }
     }
-    OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_search_english_or_spanish)) }, singleLine = true)
+    OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(if (cards.any { it.language == "ja" }) "Search English or translation" else stringResource(R.string.ui_search_english_or_spanish)) }, singleLine = true)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(false to "List", true to "Progress").forEach { (value, label) ->
             FilterChip(selected = progress == value, onClick = { focus.clearFocus(); progress = value }, label = { Text(label) }, modifier = Modifier.weight(1f))
@@ -71,8 +71,8 @@ internal fun Library(
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(stringResource(R.string.ui_organise_library)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.ui_direction))
-            TagMenu(direction?.label ?: "Both directions", listOf("Both directions") + Direction.entries.map { it.label }) { choice ->
-                direction = Direction.entries.find { it.label == choice }
+            TagMenu(direction?.labelFor(cards.translationLabel()) ?: "Both directions", listOf("Both directions") + Direction.entries.map { it.labelFor(cards.translationLabel()) }) { choice ->
+                direction = Direction.entries.find { it.labelFor(cards.translationLabel()) == choice }
             }
             Text(stringResource(R.string.ui_state))
             TagMenu(status ?: "All states", listOf("All states", "New", "Learning", "Review", "Relearning")) { status = it.takeUnless { s -> s == "All states" } }
@@ -99,6 +99,7 @@ internal fun Library(
                 onReveal = { exposedId = if (it) card.id else null }, onDelete = { confirmId = card.id }) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(card.english, style = MaterialTheme.typography.titleMedium)
+                    if (cards.any { it.language == "ja" }) Text(languageName(card.language), style = MaterialTheme.typography.labelSmall)
                     TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
                     if (GEMINI_TRANSLATION in card.source) Text(stringResource(R.string.ui_translated_by_gemini), style = MaterialTheme.typography.labelSmall)
                     if (progress) row.sides.forEach { side ->
@@ -108,7 +109,7 @@ internal fun Library(
                             due <= now -> "Due now"
                             else -> "In " + com.example.diegovocabcards.review.formatReviewInterval(((due - now + 59_999) / 60_000) * 60_000)
                         }
-                        val label = if (side.direction == Direction.EN_ES) "EN → ES" else "ES → EN"
+                        val label = if (side.direction == Direction.EN_ES) "EN → ${card.language.uppercase()}" else "${card.language.uppercase()} → EN"
                         Text("$label   ${side.status} · $availability", style = MaterialTheme.typography.bodyMedium)
                     } else if (card.tags.isNotEmpty()) Text(card.tags.joinToString(" · "), style = MaterialTheme.typography.labelMedium)
                 }
@@ -119,7 +120,8 @@ internal fun Library(
         DetailPage("Card details", { selectedId = null }) {
             Section {
                 EnglishPronunciation(card.english, card.ipa) { Text(card.english, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium) }
-                TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
+                if (cards.any { it.language == "ja" }) Text(languageName(card.language), style = MaterialTheme.typography.labelSmall)
+                    TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
                 listOf(card.definition, card.example, card.generatedExamples, card.synonyms, card.senseCategories, card.tags.joinToString(" · "))
                     .filter(String::isNotBlank).forEach { Text(it) }
                 SavedUsageContent(card.usageNote, "")
@@ -156,7 +158,7 @@ internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit =
     if (ids != null && card != null) {
         key(card.id, index) {
             val spanishFirst = direction == Direction.ES_EN || (direction == null && index < ids.size / 2)
-            StudyPresentation(card, spanishFirst, revealed, "${if (spanishFirst) Direction.ES_EN.label else Direction.EN_ES.label} · ${index + 1} of ${ids.size}",
+            StudyPresentation(card, spanishFirst, revealed, "${(if (spanishFirst) Direction.ES_EN else Direction.EN_ES).labelFor(languageName(card.language))} · ${index + 1} of ${ids.size}",
                 onReveal = { revealed = true }, cardTools = cardTools) {
                 Button(onClick = { revealed = false; index++ }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.ui_next))
@@ -181,7 +183,7 @@ internal fun Practice(cards: List<Card>, cardTools: @Composable (Card) -> Unit =
                             verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selected, onClick = null)
                             Spacer(Modifier.width(12.dp))
-                            Text(side?.label ?: "Both directions")
+                            Text(side?.labelFor(cards.translationLabel()) ?: "Both directions")
                         }
                     }
                 }

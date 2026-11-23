@@ -19,6 +19,91 @@ import org.junit.Test
 class WordLoopJourneyTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun japaneseCardSharesAHeadwordWithSpanishAndCanBeStudiedOffline() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val model = VocabularyModel(app, db)
+        val running = mutableStateOf(true)
+        val guide = "Use bloom when a plant produces flowers."
+        fun tap(text: String) = compose.tapControl(text)
+        try {
+            runBlocking { db.vocabulary().save("spanish", "bloom", "florecer", "", "", usageNote = guide) }
+            compose.setContent {
+                val settings by db.backup().observeSettings().collectAsState(initial = null)
+                if (running.value) VocabCardsApp(Appearance.Light, model,
+                    backupDefaults = settings ?: com.example.diegovocabcards.data.LibrarySettings(),
+                    dictionaryLookup = { emptyList() }, guideGenerator = { _, _, _ -> UsageNoteResult.Unavailable }) {}
+            }
+            compose.onNodeWithContentDescription("Settings").performClick()
+            tap("Spanish")
+            tap("Japanese")
+            compose.waitUntil(5000) { runBlocking { db.backup().settings()?.language == "ja" } }
+            compose.onNodeWithContentDescription("Back").performClick()
+            tap("Add card")
+            compose.onNodeWithText("Headword").performTextInput("bloom")
+            compose.onNodeWithText("Japanese translation").performScrollTo().performTextInput("咲く")
+            tap("Save card")
+            compose.waitUntil(5000) { runBlocking { db.vocabulary().cards().first().size == 2 } }
+            compose.onNodeWithText("Search English or translation").performTextInput("bloom")
+            compose.onNodeWithText("咲く").assertExists()
+            compose.onNodeWithText("florecer").assertExists()
+            tap("Review")
+            tap("Start review")
+            repeat(4) {
+                tap("Show answer")
+                tap("Usage guide")
+                compose.waitUntil(5000) { compose.onAllNodesWithText(guide).fetchSemanticsNodes().isNotEmpty() ||
+                    compose.onAllNodesWithText(UNSUPPORTED_GUIDE).fetchSemanticsNodes().isNotEmpty() }
+                if (compose.onAllNodesWithText(guide).fetchSemanticsNodes().isNotEmpty()) tap("Back to review") else tap("OK")
+                tap("Easy")
+            }
+            compose.waitUntil(5000) { runBlocking { db.backup().events().size == 4 } }
+            assertEquals(4, runBlocking { db.backup().events().map { it.senseId to it.direction }.distinct().size })
+        } finally {
+            compose.runOnIdle { running.value = false }
+            compose.waitForIdle()
+            db.close()
+        }
+    }
+
+    @Test fun japaneseDraftCanSaveWhileTranslationModelIsMissing() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        val db = Room.inMemoryDatabaseBuilder(app, VocabularyDatabase::class.java).build()
+        val model = VocabularyModel(app, db)
+        val running = mutableStateOf(true)
+        val request = kotlinx.coroutines.CompletableDeferred<String?>()
+        val called = kotlinx.coroutines.CompletableDeferred<String>()
+        val meaning = Suggestion("To produce flowers.", "verb", "Test dictionary", language = "ja")
+        try {
+            compose.setContent {
+                if (running.value) androidx.compose.foundation.layout.Column {
+                    CardEditor(null, "bloom", emptyList(), emptyList(), model,
+                        lookup = { listOf(meaning) }, language = "ja",
+                        translate = { _, sense -> called.complete(sense.language); request.await() },
+                        usageNotes = { _, _, _ -> UsageNoteResult.Unavailable },
+                        nanoOptions = { _, _, _ -> emptyList() }, ipaSuggestion = { null }) {}
+                }
+            }
+            compose.waitUntil(8000) { compose.onAllNodesWithText(meaning.definition).fetchSemanticsNodes().isNotEmpty() }
+            compose.tapControl(meaning.definition)
+            compose.waitUntil(5000) { called.isCompleted }
+            assertEquals("ja", runBlocking { called.await() })
+            compose.tapControl("Usage guide")
+            compose.waitUntil(8000) { compose.onAllNodesWithText(UNSUPPORTED_GUIDE).fetchSemanticsNodes().isNotEmpty() }
+            compose.tapControl("OK")
+            compose.onNodeWithText("Japanese translation").performScrollTo().performTextInput("咲く")
+            compose.tapControl("Save card")
+            compose.waitUntil(5000) { model.saved != null }
+            assertEquals("咲く", model.saved!!.card.spanish)
+            assertEquals("ja", model.saved!!.card.language)
+        } finally {
+            request.complete(null)
+            compose.runOnIdle { running.value = false }
+            compose.waitForIdle()
+            db.close()
+        }
+    }
+
     @Test fun lightJourney() = journey(false)
     @Test fun darkJourney() = journey(true)
 

@@ -84,11 +84,11 @@ class LibraryBackupTest {
         var restored = open()
         try {
             val settings = LibrarySettings(theme = "dark", automaticSpeech = false, voice = "voice-uk",
-                review = ReviewSettings(92, 2, 9, 8))
+                language = "ja", review = ReviewSettings(92, 2, 9, 8))
             val dao = source.vocabulary()
             dao.save("a", "fire", "fuego", "There was a fire.", "daily,heat", "Flames.", "flame", "noun",
                 "dictionary", "Meaning: heat and light.", "The fire spread.", "/faɪə/", "dictionary IPA")
-            dao.save("b", "fire", "despedir", "", "daily", senseCategories = "verb")
+            dao.save("b", "fire", "解雇する", "", "daily", senseCategories = "verb", language = "ja")
             for (direction in Direction.entries) {
                 val now = 1_800_000_000_000L + direction.ordinal * 12345L
                 source.reviews().rate("a", direction, 0, Rating.GOOD, now, settings.review)

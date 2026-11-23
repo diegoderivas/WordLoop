@@ -21,7 +21,8 @@ internal data class Suggestion(
     val synonymOptions: List<String> = emptyList(),
     val usage: String = "",
     val family: String = "",
-    val pronunciation: DictionaryPronunciation? = null
+    val pronunciation: DictionaryPronunciation? = null,
+    val language: String = "es"
 )
 
 internal fun categoryLabel(category: String): String = category.replaceFirstChar { it.titlecase(Locale.ROOT) }
@@ -32,31 +33,31 @@ internal object Dictionary {
             size > 32
     }
 
-    suspend fun lookup(term: String): List<Suggestion> = withContext(Dispatchers.IO) {
+    suspend fun lookup(term: String, language: String = "es"): List<Suggestion> = withContext(Dispatchers.IO) {
         val query = term.trim().replace(Regex("\\s+"), " ")
-        synchronized(cache) { cache[query] }?.let { return@withContext it }
-        val exact = wikiMeanings(query)
+        synchronized(cache) { cache["$language/$query"] }?.let { return@withContext it }
+        val exact = wikiMeanings(query, language)
         ensureActive()
         val phrase = if (exact.isEmpty()) {
-            participleFromGet(query)?.let { getConstruction(wikiMeanings(it)) }.orEmpty()
+            participleFromGet(query)?.let { getConstruction(wikiMeanings(it, language)) }.orEmpty()
         } else emptyList()
         ensureActive()
-        val result = exact.ifEmpty { phrase }.ifEmpty { queryFallback(query) }
+        val result = exact.ifEmpty { phrase }.ifEmpty { queryFallback(query) }.map { it.copy(language = language) }
         ensureActive()
-        if (result.isNotEmpty()) synchronized(cache) { cache[query] = result }
+        if (result.isNotEmpty()) synchronized(cache) { cache["$language/$query"] = result }
         result
     }
 
     private data class WikiPage(val html: String, val title: String, val source: String)
 
-    private fun wikiMeanings(term: String): List<Suggestion> {
+    private fun wikiMeanings(term: String, language: String): List<Suggestion> {
         val page = fetchWikiIfAvailable(term) ?: return emptyList()
         val translations = if (Wiktionary.hasTranslationSubpage(page.html, page.title)) {
             fetchWikiIfAvailable("${page.title}/translations")
                 ?.takeIf { it.title == "${page.title}/translations" }
                 ?.let { TranslationPage(it.html, it.source) }
         } else null
-        return Wiktionary.parse(page.html, page.source, term, page.title, translations)
+        return Wiktionary.parse(page.html, page.source, term, page.title, translations, language)
     }
 
     private fun fetchWikiIfAvailable(term: String): WikiPage? = try {

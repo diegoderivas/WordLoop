@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SenseTranslationTest {
+    @Test fun japaneseDoesNotRequireASpanishInfinitive() {
+        for (answer in listOf("咲く", "咲く（花を生産するために）", "「咲く」（花が開くこと）。", "\"咲く\" (開花する)")) {
+            assertEquals("咲く", senseTranslationEquivalent(answer, "bloom", "verb", "ja"))
+        }
+        assertNull(senseTranslationEquivalent("bloom (花)", "bloom", "verb", "ja"))
+    }
+
     @Test fun completeExpressionIsMarkedAndTheSelectedContextIsUsed() {
         val flight = Suggestion("To leave the ground.", "verb", "")
         assertEquals("\"to take off\" (To leave the ground.)", senseTranslationInput(" take  off ", flight))

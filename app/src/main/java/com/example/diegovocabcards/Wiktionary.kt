@@ -38,7 +38,7 @@ internal object Wiktionary {
 
     fun parse(
         html: String, source: String, requested: String, title: String,
-        supplement: TranslationPage? = null
+        supplement: TranslationPage? = null, language: String = "es"
     ): List<Suggestion> {
         val document = Jsoup.parseBodyFragment(html)
         val root = document.selectFirst(".mw-parser-output") ?: document.body()
@@ -54,7 +54,7 @@ internal object Wiktionary {
         var senses = mutableListOf<Suggestion>()
         var linkedSection = false
         var definitionList = 0
-        val supplemental = supplement?.let { subpageTables(it.html) }.orEmpty()
+        val supplemental = supplement?.let { subpageTables(it.html, language) }.orEmpty()
         val translations = mutableListOf<Pair<String, List<String>>>()
         val results = mutableListOf<Suggestion>()
 
@@ -156,7 +156,7 @@ internal object Wiktionary {
                 }
             }
             if (supplement != null && hasTranslationSubpage(node.outerHtml(), title)) linkedSection = true
-            translations += spanishTables(node)
+            translations += translationTables(node, language)
         }
         finishCategory()
 
@@ -172,7 +172,7 @@ internal object Wiktionary {
         return distinctMeanings(relevant)
     }
 
-    private fun subpageTables(html: String): Map<String, List<Pair<String, List<String>>>> {
+    private fun subpageTables(html: String, language: String): Map<String, List<Pair<String, List<String>>>> {
         val document = Jsoup.parseBodyFragment(html)
         val root = document.selectFirst(".mw-parser-output") ?: document.body()
         val result = mutableMapOf<String, MutableList<Pair<String, List<String>>>>()
@@ -188,18 +188,18 @@ internal object Wiktionary {
             if (!english) continue
             val name = heading?.let { senseText(it.text()) }
             if (name in categories) category = name.orEmpty()
-            if (category.isNotEmpty()) result.getOrPut(category) { mutableListOf() } += spanishTables(node)
+            if (category.isNotEmpty()) result.getOrPut(category) { mutableListOf() } += translationTables(node, language)
         }
         return result
     }
 
-    private fun spanishTables(node: Element): List<Pair<String, List<String>>> =
+    private fun translationTables(node: Element, language: String): List<Pair<String, List<String>>> =
         node.select("table.translations[data-gloss]").mapNotNull { table ->
             val label = senseText(table.attr("data-gloss"))
-            val terms = table.select("li").filter { row: Element -> row.ownText().startsWith("Spanish:") }
+            val terms = table.select("li").filter { row: Element -> row.ownText().startsWith(if (language == "ja") "Japanese:" else "Spanish:") }
                 .flatMap { row ->
-                    row.select("[lang=es]").filter { term: Element -> term.closest(".ttbc") == null }
-                        .map { it.text().trim() }
+                    row.select("[lang=$language]").filter { term: Element -> term.closest(".ttbc") == null }
+                        .map { it.clone().apply { select("rt, rp").remove() }.text().trim() }
                 }.filter { it.isNotEmpty() }
             if (label.isEmpty() || terms.isEmpty()) null else label to terms
         }

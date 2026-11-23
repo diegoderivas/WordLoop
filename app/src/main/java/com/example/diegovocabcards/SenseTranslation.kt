@@ -36,18 +36,18 @@ internal const val GOOGLE_TRANSLATION = "Traducción automática con Google Tran
     "https://developers.google.com/ml-kit/language/translation"
 
 internal object LocalSenseTranslation {
-    private val options = TranslatorOptions.Builder()
-        .setSourceLanguage(TranslateLanguage.ENGLISH).setTargetLanguage(TranslateLanguage.SPANISH).build()
+    private fun options(language: String) = TranslatorOptions.Builder()
+        .setSourceLanguage(TranslateLanguage.ENGLISH).setTargetLanguage(language).build()
     private val wifi = DownloadConditions.Builder().requireWifi().build()
 
     suspend fun suggest(term: String, meaning: Suggestion): String? {
         val query = senseTranslationInput(term, meaning) ?: return null
-        val translator = Translation.getClient(options)
+        val translator = Translation.getClient(options(meaning.language))
         return try {
             withTimeoutOrNull(60_000) {
                 translator.downloadModelIfNeeded(wifi).awaitResult()
                 val result = translator.translate(query).awaitResult()
-                senseTranslationEquivalent(result, term, meaning.category)
+                senseTranslationEquivalent(result, term, meaning.category, meaning.language)
             }
         } finally {
             translator.close()
@@ -68,10 +68,15 @@ internal fun senseTranslationInput(term: String, meaning: Suggestion): String? {
     val context = meaning.definition.ifBlank { meaning.examples.firstOrNull().orEmpty() }
         .trim().replace(Regex("\\s+"), " ")
     if (expression.isBlank() || '"' in expression || context.isBlank()) return null
+    if (meaning.language == "ja") {
+        return "$expression (${context.trimEnd('.').replaceFirstChar { it.lowercaseChar() }})".takeIf { it.length <= 500 }
+    }
     val infinitive = meaning.category in setOf("verb", "phrase") && !expression.startsWith("to ", ignoreCase = true)
     val head = if (infinitive) "to $expression" else expression
     return "\"$head\" ($context)".takeIf { it.length <= 500 }
 }
+
+internal fun validJapaneseEquivalent(text: String) = text.matches(Regex("""[\p{IsHan}\p{IsHiragana}\p{IsKatakana}々ー]{1,28}"""))
 
 private val quotedEquivalent = Regex("""^(?:"([^"]+)"|“([^”]+)”|«([^»]+)»)\s*\(.+\)[.!]?\s*$""")
 private val candidateWords = Regex("""[\p{L}][\p{L}\p{M} '-]{0,89}""")
@@ -79,7 +84,13 @@ private val alternative = Regex("""\b(?:o|u)\b""")
 private val infinitive = Regex("""^[\p{L}]+(?:ar|er|ir)(?:se)?(?:\s|$)""")
 private val passive = Regex("""^(?:ser|quedar|que|te|me|nos|se)\s+""")
 
-internal fun senseTranslationEquivalent(response: String, term: String, category: String): String? {
+internal fun senseTranslationEquivalent(response: String, term: String, category: String, language: String = "es"): String? {
+    if (language == "ja") {
+        val text = response.trim()
+        val wrapped = Regex("""^(?:「([^」]+)」|“([^”]+)”|\"([^\"]+)\"|『([^』]+)』|([^（(「」“”"]+))\s*[（(].+[）)][。.]?$""").matchEntire(text)
+        val candidate = wrapped?.groupValues?.drop(1)?.firstOrNull { it.isNotBlank() } ?: text
+        return candidate.takeIf(::validJapaneseEquivalent)
+    }
     val match = quotedEquivalent.matchEntire(response.trim()) ?: return null
     val candidate = match.groupValues.drop(1).first { it.isNotEmpty() }.trim()
         .replaceFirstChar { if (category == "proper noun") it else it.lowercaseChar() }

@@ -129,7 +129,7 @@ internal fun ReviewDetails(senseId: String, dao: ReviewDao, onClose: () -> Unit)
                 else for ((direction, history) in loaded) {
                     val event = history.firstOrNull()
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(direction.label, style = MaterialTheme.typography.titleSmall)
+                        Text(direction.labelFor(languageName(LocalStudyCards.current.find { it.id == senseId }?.language ?: "es")), style = MaterialTheme.typography.titleSmall)
                         if (event == null) Text(stringResource(R.string.ui_new))
                         else {
                             val memory = event.memory
