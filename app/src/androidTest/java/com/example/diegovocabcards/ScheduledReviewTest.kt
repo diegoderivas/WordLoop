@@ -45,7 +45,9 @@ class ScheduledReviewTest {
             click("Show answer")
             compose.onNodeWithText("IPA unavailable").assertDoesNotExist()
             click("Good")
-            compose.waitUntil(5000) { compose.onAllNodesWithText("English → Spanish · 2 of 2").fetchSemanticsNodes().isNotEmpty() }
+            click("Back to Home")
+            click("Start review")
+            compose.waitUntil(5000) { compose.onAllNodesWithText("English → Spanish · 1 of 1").fetchSemanticsNodes().isNotEmpty() }
             val first = runBlocking { db.reviews().latest("one", Direction.ES_EN) }
             assertNotNull(first)
             assertNull(runBlocking { db.reviews().latest("one", Direction.EN_ES) })
@@ -53,7 +55,7 @@ class ScheduledReviewTest {
             click("Show answer")
             click("Easy")
             compose.waitUntil(5000) { compose.onAllNodesWithText("Review complete").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Ratings saved: 2").assertExists()
+            compose.onNodeWithText("Ratings saved: 1").assertExists()
             assertEquals(first, runBlocking { db.reviews().latest("one", Direction.ES_EN) })
             assertEquals(io.github.openspacedrepetition.Rating.EASY, runBlocking { db.reviews().latest("one", Direction.EN_ES) }!!.rating)
         } finally {

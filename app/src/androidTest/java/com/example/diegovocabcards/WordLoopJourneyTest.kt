@@ -48,14 +48,18 @@ class WordLoopJourneyTest {
             compose.onNodeWithText("咲く").assertExists()
             compose.onNodeWithText("florecer").assertExists()
             tap("Review")
-            tap("Start review")
-            repeat(4) {
+            repeat(4) { index ->
+                tap("Start review")
                 tap("Show answer")
                 tap("Usage guide")
                 compose.waitUntil(5000) { compose.onAllNodesWithText(guide).fetchSemanticsNodes().isNotEmpty() ||
                     compose.onAllNodesWithText(UNSUPPORTED_GUIDE).fetchSemanticsNodes().isNotEmpty() }
                 if (compose.onAllNodesWithText(guide).fetchSemanticsNodes().isNotEmpty()) tap("Back to review") else tap("OK")
                 tap("Easy")
+                if (index < 3) {
+                    compose.waitUntil(5000) { compose.onAllNodesWithText("Back to Home").fetchSemanticsNodes().isNotEmpty() }
+                    tap("Back to Home")
+                }
             }
             compose.waitUntil(5000) { runBlocking { db.backup().events().size == 4 } }
             assertEquals(4, runBlocking { db.backup().events().map { it.senseId to it.direction }.distinct().size })
@@ -194,10 +198,11 @@ class WordLoopJourneyTest {
             tap("Advanced options")
             tap("Spanish → English")
             waitFor("Show answer")
+            waitFor("fuego")
             shot("review-front")
             compose.onNodeWithText("fire").assertDoesNotExist()
             tap("Show answer")
-            compose.onNodeWithText("fire").assertExists()
+            waitFor("fire")
             shot("review-answer")
             tap("Good")
             compose.waitUntil(5000) { runBlocking { db.reviews().latest("1", Direction.ES_EN) != null } }

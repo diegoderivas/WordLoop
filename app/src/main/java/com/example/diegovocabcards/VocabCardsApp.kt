@@ -236,7 +236,7 @@ internal fun VocabCardsApp(
                                 key(studySession) {
                                     ScheduledReview(queue, loadedSchedules, model.reviews, clock, reviewSettings, studyTools,
                                         quickBatch = quickBatch, onDelete = model::deleteSense,
-                                        onContinue = { quickBatch = null; studySession++ }
+                                        onContinue = { quickBatch = null }
                                     ) {
                                         sessionState.removeState(Screen.Study.name)
                                         screen = Screen.Home

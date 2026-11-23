@@ -153,4 +153,5 @@
         <item quantity="one">%1$d question available</item>
         <item quantity="other">%1$d questions available</item>
     </plurals>
+    <string name="ui_remaining_words_later">Remaining words will be available in a later session.</string>
 </resources>

@@ -3,8 +3,10 @@ package com.example.diegovocabcards.review
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.data.Schedule
 import io.github.openspacedrepetition.State
+import java.util.Locale
 
 internal data class Question(val card: Card, val turn: Int, val direction: Direction, val learning: Boolean = false) {
+    val word: String = card.english.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
     val key: String get() = "${direction.name}:$turn:${card.id}"
 }
 internal data class StudyQueue(
@@ -13,19 +15,29 @@ internal data class StudyQueue(
     val dueCount: Int,
     val nextDue: Long?
 ) {
-    fun quickBatch(): List<String> {
-        val pending = ready.toMutableList()
-        var previousId: String? = null
-        return List(minOf(10, pending.size)) {
-            val index = pending.indexOfFirst { it.card.id != previousId }.coerceAtLeast(0)
-            val question = pending.removeAt(index)
-            previousId = question.card.id
-            question.key
+    fun quickBatch(): List<String> = planStudyQuestions(ready, emptyList(), limit = 10).map(Question::key)
+}
+
+private const val STUDY_WORD_GAP = 5
+
+// The five most recently rated distinct English entries are still blocked.
+internal fun recordStudyRating(word: String, recent: List<String>): List<String> =
+    (listOf(word) + recent.filterNot { it == word }).take(STUDY_WORD_GAP)
+
+internal fun nextStudyQuestion(ready: List<Question>, recent: List<String>): Question? =
+    ready.firstOrNull { it.word !in recent }
+
+internal fun planStudyQuestions(ready: List<Question>, recent: List<String>, limit: Int): List<Question> {
+    val pending = ready.toMutableList()
+    var rated = recent
+    return buildList {
+        repeat(limit) {
+            val next = nextStudyQuestion(pending, rated) ?: return@buildList
+            add(next)
+            pending.remove(next)
+            rated = recordStudyRating(next.word, rated)
         }
     }
-
-    fun nextAfter(senseId: String?): Question? =
-        ready.firstOrNull { it.card.id != senseId } ?: ready.firstOrNull()
 }
 
 /** Null direction selects both independent FSRS histories. */

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.diegovocabcards.data.VocabularyDatabase
@@ -21,8 +22,15 @@ import java.time.ZoneOffset
 
 class ReviewBatchTest {
     @get:Rule val compose = createComposeRule()
+    private val restoration = StateRestorationTester(compose)
     private val quick = "Quick review · up to 10 questions"
-    private val clock = Clock.fixed(Instant.parse("2026-11-23T12:00:00Z"), ZoneOffset.UTC)
+    private val clock = object : Clock() {
+        @Volatile var now = Instant.parse("2026-11-23T12:00:00Z")
+        override fun instant(): Instant = now
+        override fun getZone() = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId): Clock = Clock.fixed(now, zone)
+    }
+    private val later = "Remaining words will be available in a later session."
 
     @Test fun quickIsDisabledWhenNothingIsAvailableOnBothEntryScreens() = withApp {
         for (screen in listOf("Home", "Review")) {
@@ -31,6 +39,18 @@ class ReviewBatchTest {
             compose.onNodeWithText("Start review").assertIsNotEnabled()
             compose.onNodeWithText(quick).assertIsNotEnabled()
         }
+    }
+
+    @Test fun startReviewCanScoreMoreThanTenQuestions() = withApp { db ->
+        runBlocking {
+            repeat(6) { db.vocabulary().save("sense-$it", "Term $it", "Translation $it", "", "") }
+        }
+        tap("Start review")
+        repeat(12) {
+            tap("Show answer")
+            tap("Easy")
+        }
+        waitFor("Ratings saved: 12")
     }
 
     @Test fun fullReviewUsesAllQuestionsAndQuickNeverExpands() = withApp { db ->
@@ -53,35 +73,93 @@ class ReviewBatchTest {
         compose.onNodeWithText("4 questions available").assertExists()
         assertEquals(10, runBlocking { db.backup().countEvents() })
         tap("Continue review")
-        waitFor("1 of 4", substring = true)
-    }
-
-    @Test fun quickDeleteAfterRevealShrinksTheBatchAndPreservesTheOtherSense() = withApp { db ->
-        seedMixed(db)
-        val retained = runBlocking { db.reviews().latest("a", Direction.EN_ES) }
-        tap(quick)
-        waitFor("1 of 6", substring = true)
-        tap("Show answer")
-        tap("Easy")
-        waitFor("2 of 6", substring = true)
-        tap("Show answer")
-        openDelete()
-        waitFor("Delete “fire → despedir”?")
-        tap("Cancel")
-        compose.onNodeWithText("despedir").assertExists()
-        compose.onNodeWithText("Show answer").assertDoesNotExist()
-        openDelete()
-        tap("Delete")
-        waitFor("2 of 4", substring = true)
+        waitFor("11 of 14", substring = true)
         repeat(3) {
             tap("Show answer")
             tap("Easy")
         }
-        waitFor("Ratings saved: 4")
-        compose.onNodeWithText("0 questions available").assertExists()
-        assertEquals(setOf("a", "c"), runBlocking { db.vocabulary().cards().first().map { it.id }.toSet() })
-        assertTrue(runBlocking { Direction.entries.all { db.reviews().recent("b", it).isEmpty() } })
+        waitFor("Ratings saved: 13")
+        compose.onNodeWithText(later).assertExists()
+    }
+
+    @Test fun quickStopsAfterThreeDistinctWords() = withApp { db ->
+        seedMixed(db)
+        runBlocking { db.vocabulary().save("d", "mist", "niebla", "", "") }
+        tap(quick)
+        repeat(3) {
+            waitFor("${it + 1} of 3", substring = true)
+            tap("Show answer")
+            tap("Easy")
+        }
+        waitFor("Ratings saved: 3")
+        compose.onNodeWithText("5 questions available").assertExists()
+        compose.onNodeWithText(later).assertExists()
+        captureEmulator("review-word-gap-summary-light.png")
+    }
+
+    @Test fun quickDeleteShrinksTheBatchWithoutScoringOrReplacingTheQuestion() = withApp { db ->
+        seedMixed(db)
+        runBlocking { db.vocabulary().save("d", "mist", "niebla", "", "") }
+        val retained = runBlocking { db.reviews().latest("a", Direction.EN_ES) }
+        tap(quick)
+        waitFor("1 of 3", substring = true)
+        tap("Show answer")
+        tap("Easy")
+        waitFor("2 of 3", substring = true)
+        openDelete()
+        waitFor("Delete “bloom → 咲く”?")
+        tap("Delete")
+        waitFor("2 of 2", substring = true)
+        tap("Show answer")
+        tap("Easy")
+        waitFor("Ratings saved: 2")
+        assertEquals(setOf("a", "b", "d"), runBlocking { db.vocabulary().cards().first().map { it.id }.toSet() })
         assertTrue(runBlocking { db.reviews().recent("a", Direction.EN_ES).contains(retained) })
+    }
+
+    @Test fun againWaitsForItsIntervalEvenAfterFiveWordsAndAnEditorRoundTrip() = withApp { db ->
+        runBlocking {
+            val dao = db.vocabulary()
+            dao.save("00", "mist", "niebla", "", "")
+            dao.save("01", "spare", "sobra", "", "")
+            for (i in 2..7) dao.save("0$i", "term $i", "gloss $i", "", "")
+        }
+        tap("Advanced options")
+        tap("Spanish → English")
+        waitFor("niebla")
+        tap("Show answer")
+        tap("Again")
+        // Discard a question without scoring it. The first repeat is still five ratings away.
+        waitFor("sobra")
+        openDelete()
+        tap("Delete")
+        waitFor("gloss 2")
+        tap("Show answer")
+        tap("Edit card")
+        compose.onNodeWithText("Spanish translation").performScrollTo().performTextReplacement("editado")
+        tap("Save changes")
+        waitFor("editado")
+        restoration.emulateSavedInstanceStateRestore()
+        waitFor("editado")
+        compose.onNodeWithText("Show answer").assertDoesNotExist()
+        tap("Easy")
+        for (i in 3..6) {
+            waitFor("gloss $i")
+            tap("Show answer")
+            tap("Easy")
+        }
+        // Five distinct words passed, but the original Again retry is still in the future.
+        waitFor("gloss 7")
+        assertEquals(1, runBlocking { db.reviews().recent("00", Direction.ES_EN).size })
+        val due = runBlocking { db.reviews().latest("00", Direction.ES_EN)!!.memory.dueAt }
+        clock.now = Instant.ofEpochMilli(due)
+        tap("Show answer")
+        tap("Easy")
+        waitFor("niebla")
+        tap("Show answer")
+        tap("Easy")
+        waitFor("Ratings saved: 8")
+        assertEquals(2, runBlocking { db.reviews().recent("00", Direction.ES_EN).size })
     }
 
     @Test fun lastManualCardCanBeDeletedBeforeRevealAfterAWriteFailure() = withApp { db ->
@@ -174,7 +252,7 @@ class ReviewBatchTest {
         val model = VocabularyModel(app, db)
         val visible = mutableStateOf(true)
         try {
-            compose.setContent {
+            restoration.setContent {
                 if (visible.value) DiegoVocabCardsTheme(darkTheme = dark) {
                     val view = androidx.compose.ui.platform.LocalView.current
                     androidx.compose.runtime.SideEffect {

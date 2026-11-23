@@ -24,6 +24,9 @@ import com.example.diegovocabcards.review.ReviewSettings
 import com.example.diegovocabcards.review.formatReviewInterval
 import com.example.diegovocabcards.review.StudyQueue
 import com.example.diegovocabcards.review.studyQueue
+import com.example.diegovocabcards.review.nextStudyQuestion
+import com.example.diegovocabcards.review.planStudyQuestions
+import com.example.diegovocabcards.review.recordStudyRating
 import io.github.openspacedrepetition.Rating
 import java.time.Clock
 import java.text.DateFormat
@@ -43,9 +46,12 @@ internal fun rememberReviewQueues(
     clock: Clock
 ): Map<Direction?, StudyQueue>? {
     var now by remember(clock) { mutableLongStateOf(clock.millis()) }
-    val queues = remember(cards, schedules, now) {
+    val queues = remember(cards, schedules, now, clock) {
         if (cards == null || schedules == null) null
-        else (listOf(null) + Direction.entries).associateWith { studyQueue(cards, schedules, it, now) }
+        else {
+            val at = clock.millis()
+            (listOf(null) + Direction.entries).associateWith { studyQueue(cards, schedules, it, at) }
+        }
     }
     val wakeAt = queues?.values?.mapNotNull { it.nextDue }?.minOrNull()
     LaunchedEffect(wakeAt, clock, schedules) {
@@ -117,16 +123,16 @@ internal fun ScheduledReview(
     onHome: () -> Unit
 ) {
     var currentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var currentWord by rememberSaveable { mutableStateOf("") }
+    var recentWords by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var quickTotal by rememberSaveable { mutableIntStateOf(quickBatch?.size ?: 0) }
     var turn by rememberSaveable { mutableIntStateOf(0) }
     var completed by rememberSaveable { mutableIntStateOf(0) }
     var finished by rememberSaveable { mutableStateOf(false) }
     var side by rememberSaveable { mutableStateOf(Direction.ES_EN) }
     var deletedIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     val available = queue.ready.filterNot { it.card.id in deletedIds }
-    val pending = if (quickBatch == null) available else {
-        val byKey = available.associateBy { it.key }
-        quickBatch.mapNotNull(byKey::get)
-    }
+    val pending = if (quickBatch == null) available else available.filter { it.key in quickBatch }
     val question = pending.find { it.card.id == currentId && it.turn == turn && it.direction == side }
     if (finished) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -136,8 +142,14 @@ internal fun ScheduledReview(
             if (available.isEmpty()) {
                 Text(stringResource(R.string.ui_no_questions_due))
                 queue.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
+            } else if (nextStudyQuestion(available, recentWords) == null) {
+                Text(stringResource(R.string.ui_remaining_words_later))
             } else {
-                Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = {
+                    currentId = null
+                    finished = false
+                    onContinue()
+                }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.ui_continue_review))
                 }
             }
@@ -146,23 +158,38 @@ internal fun ScheduledReview(
     } else if (question == null) {
         // Advance only once Room has published the committed turn.
         LaunchedEffect(currentId, side, turn, pending, schedules) {
-            if (currentId !in deletedIds && schedules.any { it.senseId == currentId && it.direction == side && it.turn > turn }) completed++
-            val next = pending.firstOrNull { it.card.id != currentId } ?: pending.firstOrNull()
+            if (currentId !in deletedIds && schedules.any {
+                    it.senseId == currentId && it.direction == side && it.turn > turn
+                }) {
+                completed++
+                recentWords = ArrayList(recordStudyRating(currentWord, recentWords))
+            }
+            val next = if (quickBatch != null && completed >= quickTotal) null
+                else nextStudyQuestion(pending, recentWords)
             if (next == null) finished = true
             else {
                 currentId = next.card.id
+                currentWord = next.word
                 side = next.direction
                 turn = next.turn
             }
         }
     } else {
+        val remaining = if (quickBatch == null) pending.size else {
+            // Keep the displayed question when an edit changes its English term.
+            val afterCurrent = recordStudyRating(question.word, recentWords)
+            val rest = planStudyQuestions(pending.filterNot { it.key == question.key },
+                afterCurrent, limit = (quickTotal - completed - 1).coerceAtLeast(0))
+            (1 + rest.size).also { reachable -> SideEffect { quickTotal = completed + reachable } }
+        }
         key(question.card.id, question.direction, turn) {
-            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools, completed, pending.size,
+            StudyQuestion(question.card, question.direction, question.turn, dao, clock, settings, cardTools, completed, remaining,
                 onDelete = { id ->
                     onDelete(id)
                     deletedIds = ArrayList(deletedIds + id)
                 }
             ) { rating, revealedAt ->
+                currentWord = question.word
                 dao.rate(question.card.id, question.direction, question.turn, rating, clock.millis(), settings, revealedAt)
             }
         }
