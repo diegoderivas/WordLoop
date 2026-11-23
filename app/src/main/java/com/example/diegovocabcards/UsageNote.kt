@@ -17,10 +17,12 @@ internal data class UsageNote(
     val usage: String,
     val examples: List<String>,
     val nuance: String? = null,
-    val similar: String? = null
+    val similar: String? = null,
+    val synonyms: List<String> = emptyList()
 ) {
     fun sections(): List<Pair<String, String>> = buildList {
         add("Meaning" to meaning)
+        if (synonyms.isNotEmpty()) add("Synonyms" to guideSynonyms(synonyms).joinToString("\n"))
         add("How to use it" to usage)
         nuance?.let { add("Nuance" to it) }
         similar?.let { add("Similar words" to it) }
@@ -30,6 +32,52 @@ internal data class UsageNote(
         addAll(sections().map { (title, content) -> "$title\n$content" })
         if (examples.isNotEmpty()) add("Examples\n${examples.joinToString("\n")}")
     }.joinToString("\n\n")
+}
+
+internal fun guideSynonyms(vararg groups: List<String>): List<String> =
+    groups.asSequence().flatMap { it.asSequence() }
+        .flatMap { it.splitToSequence(',', '\n') }
+        .map(::guideListItem)
+        .filter { it.isNotBlank() && !placeholder.matches(it.trim('(', ')')) }
+        .distinctBy(::senseText)
+        .take(6).toList()
+
+private val guideBullet = Regex("""^(?:[•*-]|\d+[.)])\s+""")
+internal fun guideListItem(line: String): String = line.trim().replaceFirst(guideBullet, "")
+
+internal data class GuideSection(val title: String?, val body: List<String>)
+
+internal fun storedGuideSections(note: String, synonyms: List<String>): List<GuideSection> {
+    val headings = listOf("Meaning", "Synonyms", "How to use it", "Nuance", "Similar words", "Examples")
+    val sections = buildList {
+        var title: String? = null
+        val body = mutableListOf<String>()
+        fun addSection() {
+            val content = body.dropWhile(String::isBlank).dropLastWhile(String::isBlank)
+            if (content.isNotEmpty()) add(GuideSection(title, content))
+        }
+        for (line in note.lineSequence()) {
+            val heading = line.trim().trimEnd(':').removeSurrounding("**").trimEnd(':')
+            val knownHeading = headings.firstOrNull { it.equals(heading, ignoreCase = true) }
+            if (knownHeading == null) {
+                body += line
+            } else {
+                addSection()
+                title = knownHeading
+                body.clear()
+            }
+        }
+        addSection()
+    }
+    val words = guideSynonyms(synonyms, sections.filter { it.title == "Synonyms" }.flatMap { it.body })
+    val ordered = sections.filterNot { it.title == "Synonyms" }.toMutableList()
+    if (words.isNotEmpty()) {
+        val meaning = ordered.indexOfFirst { it.title == "Meaning" }
+        val usage = ordered.indexOfFirst { it.title == "How to use it" }
+        val position = if (meaning >= 0) meaning + 1 else if (usage >= 0) usage else ordered.size
+        ordered.add(position, GuideSection("Synonyms", words))
+    }
+    return ordered
 }
 
 internal enum class UsageNoteProgress { Checking, Downloading, Generating }
@@ -52,6 +100,7 @@ internal fun usageNotePrompt(term: String, sense: Suggestion): String = buildStr
     appendLine("Write a short learner's guide for the single English sense below. Write EVERY field in clear English, even if the input contains a non-English translation.")
     appendLine("Use these labels, one field per line. No introduction or placeholders.")
     appendLine("MEANING: 2–3 complete sentences. Explain what the expression communicates here. Where relevant, explain the feeling, implication, or tone.")
+    appendLine("SYNONYMS: Optional. Up to six interchangeable English words or phrases for this sense, separated by commas.")
     appendLine("HOW TO USE IT: Give natural collocations or phrases and explain when they fit. Avoid generic grammar rules.")
     appendLine("NUANCE: Optional. Describe a specific tone, implication, or register.")
     appendLine("SIMILAR WORDS: Optional. Contrast one close word only if it helps.")
@@ -69,7 +118,7 @@ internal fun usageNotePrompt(term: String, sense: Suggestion): String = buildStr
 
 private fun String.oneLine(): String = replace(Regex("\\s+"), " ").trim()
 
-private val noteFields = listOf("meaning", "how to use it", "nuance", "similar words", "example 1", "example 2", "example 3")
+private val noteFields = listOf("meaning", "synonyms", "how to use it", "nuance", "similar words", "example 1", "example 2", "example 3")
 private val placeholder = Regex("""(?i)^(?:omit(?:ted| if.*)?|optional|skip|none|n/?a|not applicable|null)[.!]?$""")
 private val sentenceEnd = Regex("""[.!?]+["'”’)]*(?=\s|$)""")
 private val word = Regex("""\p{L}+""")
@@ -96,7 +145,9 @@ internal fun parseUsageNote(response: String): UsageNote? {
     val examples = (1..3).mapNotNull { field("example $it", 240) }
         .filter { sentenceEnd.findAll(it).lastOrNull()?.range?.last == it.lastIndex }
         .distinctBy(::senseText)
-    return UsageNote(meaning, usage, examples, field("nuance", 320), field("similar words", 320))
+    val synonyms = field("synonyms", 300)?.split(',').orEmpty()
+        .filter { it.trim().matches(Regex("""[A-Za-z][A-Za-z'’ -]{0,49}""")) }
+    return UsageNote(meaning, usage, examples, field("nuance", 320), field("similar words", 320), guideSynonyms(synonyms))
 }
 
 internal suspend fun validateUsageNote(response: String): UsageNote? {
@@ -176,7 +227,7 @@ internal object NanoUsageNotes : UsageNoteGenerator {
             onProgress(UsageNoteProgress.Generating)
             val request = generateContentRequest(TextPart(prompt)) {
                 temperature = 0.2f
-                maxOutputTokens = 560
+                maxOutputTokens = 620
             }
             val candidate = withTimeoutOrNull(60_000) {
                 model.generateContent(request).candidates.firstOrNull()?.text?.let { validateUsageNote(it) }

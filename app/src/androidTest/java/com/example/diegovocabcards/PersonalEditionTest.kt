@@ -81,6 +81,19 @@ class PersonalEditionTest {
         waitFor("florecer")
     }
 
+    @Test fun libraryRoundsRemainingTimesToHours() = withApp { db, _ ->
+        runBlocking {
+            db.vocabulary().save("trim", "trim", "recortar", "", "")
+            val remaining = 1172 * 60_000L
+            val sixteenDays = 16 * 86_400_000L
+            db.reviews().rate("trim", Direction.EN_ES, 0, Rating.EASY, System.currentTimeMillis() - sixteenDays + remaining)
+        }
+        tap("Library")
+        tap("Progress")
+        compose.onNodeWithText("In 20 hours", substring = true).assertIsDisplayed()
+        captureEmulator("study-polish-library-hours-light.png")
+    }
+
     @Test fun homeShowsTheNextReviewWhenCaughtUp() = withApp { db, _ ->
         runBlocking {
             db.vocabulary().save("mist", "mist", "niebla", "", "")

@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
 import com.example.diegovocabcards.review.Direction
+import com.example.diegovocabcards.review.formatReviewRemaining
 
 
 @Composable
@@ -158,7 +159,7 @@ internal fun Library(
                         val availability = when {
                             due == null -> "Available"
                             due <= now -> "Due now"
-                            else -> "In " + com.example.diegovocabcards.review.formatReviewInterval(((due - now + 59_999) / 60_000) * 60_000)
+                            else -> "In " + formatReviewRemaining(due - now)
                         }
                         val label = if (side.direction == Direction.EN_ES) "EN → ${card.language.uppercase()}" else "${card.language.uppercase()} → EN"
                         Text("$label   ${side.status} · $availability", style = MaterialTheme.typography.bodyMedium)
@@ -194,7 +195,7 @@ internal fun Library(
                     CardDetailHeading(stringResource(R.string.ui_tags))
                     Text(card.tags.joinToString(" · "))
                 }
-                SavedUsageContent(card.usageNote, "")
+                SavedUsageContent(card.usageNote, "", guideSynonyms = guideSynonyms(listOf(card.synonyms)))
             }
             Button(onClick = { selectedId = null; onEdit(card.id) }) { Text(stringResource(R.string.ui_edit_card)) }
             TextButton(onClick = { selectedId = null; onAnother(card) }) { Text(stringResource(R.string.ui_add_another_meaning)) }

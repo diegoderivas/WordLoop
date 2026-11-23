@@ -62,6 +62,15 @@ internal object Fsrs {
     }
 }
 
+internal fun formatReviewRemaining(milliseconds: Long): String = when {
+    milliseconds >= 86_400_000L -> formatReviewInterval(milliseconds)
+    milliseconds >= 3_600_000L -> {
+        val hours = (milliseconds + 1_800_000L) / 3_600_000L
+        if (hours == 1L) "1 hour" else "$hours hours"
+    }
+    else -> "${((milliseconds + 30_000L) / 60_000L).coerceIn(1L, 59L)} min"
+}
+
 internal fun formatReviewInterval(milliseconds: Long): String {
     val seconds = milliseconds / 1000
     val days = seconds / 86_400

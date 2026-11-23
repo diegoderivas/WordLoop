@@ -23,6 +23,22 @@ class UsageNoteTest {
         }
     }
 
+    @Test fun displaysStoredGuideSectionsAndLimitsSynonyms() {
+        val note = parseUsageNote("""
+            MEANING: A word can have several meanings. This note covers one of them.
+            SYNONYMS: choose, select, Choose, decide, pick, opt, settle on, take
+            HOW TO USE IT: Use the term when comparing options.
+            EXAMPLE 1: I will choose later.
+        """.trimIndent())!!
+        assertEquals(listOf("choose", "select", "decide", "pick", "opt", "settle on"), note.synonyms)
+        val sections = storedGuideSections(note.forStorage(), listOf("prefer"))
+        assertEquals(listOf("Meaning", "Synonyms", "How to use it", "Examples"), sections.map { it.title })
+        assertEquals(listOf("prefer", "choose", "select", "decide", "pick", "opt"), sections[1].body)
+        assertEquals(listOf("I will choose later."), sections.last().body)
+        assertEquals(listOf("A personal note."), storedGuideSections("A personal note.", emptyList()).single().body)
+        assertEquals("Pick one.", guideListItem("2. Pick one."))
+    }
+
     @Test fun parsesEnglishSectionsAndOmitsEmptyOrPlaceholderFields() {
         val output = """
             MEANING: A plane takes off when it leaves the ground. The phrase marks the start of a flight.

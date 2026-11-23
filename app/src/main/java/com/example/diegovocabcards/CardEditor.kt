@@ -83,7 +83,7 @@ internal fun CardEditor(
     var example by rememberSaveable { mutableStateOf(original?.example.orEmpty()) }
     var guideEdited by rememberSaveable { mutableStateOf(false) }
     var changingMeaning by rememberSaveable(english.trim()) { mutableStateOf(false) }
-    var comparing by rememberSaveable { mutableStateOf(false) }
+    var comparing by rememberSaveable(english.trim()) { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
     var editingCategory by rememberSaveable { mutableStateOf(false) }
     var definition by rememberSaveable { mutableStateOf(original?.definition.orEmpty()) }
@@ -99,6 +99,7 @@ internal fun CardEditor(
     var exampleSource by rememberSaveable { mutableStateOf("") }
     var synonymSource by rememberSaveable { mutableStateOf("") }
     var translationSource by rememberSaveable { mutableStateOf("") }
+    var translationEdited by rememberSaveable { mutableStateOf(false) }
     var usageNote by rememberSaveable { mutableStateOf(original?.usageNote.orEmpty()) }
     var generatedExamples by rememberSaveable { mutableStateOf(original?.generatedExamples.orEmpty()) }
     var ipa by rememberSaveable { mutableStateOf(preferredIpa(original?.ipa.orEmpty()).orEmpty()) }
@@ -134,9 +135,10 @@ internal fun CardEditor(
             if (value.isNotBlank()) retainedSource = combineSources(retainedSource, synonymSource)
             synonymSource = ""
         }
-        if (field == MeaningField.Spanish && translationSource.isNotEmpty()) {
+        if (field == MeaningField.Spanish) {
             if (value.isNotBlank()) retainedSource = combineSources(retainedSource, translationSource)
             translationSource = ""
+            translationEdited = true
         }
         manualFields = ArrayList((manualFields + field.name).distinct())
         automaticFields = ArrayList(automaticFields - field.name)
@@ -204,6 +206,7 @@ internal fun CardEditor(
             automaticFields = ArrayList((automaticFields + MeaningField.Spanish.name).distinct())
         }
         translationSource = source
+        translationEdited = false
     }
     fun canFill(field: MeaningField) =
         selected != null && english.trim() == currentQuery && selectedKey == selected.selectionKey() &&
@@ -311,7 +314,10 @@ internal fun CardEditor(
         automaticFields = ArrayList(applied.map { it.name })
         manualFields = ArrayList(manualFields - automaticFields.toSet())
         activeSource = value.source.takeIf { applied.isNotEmpty() }.orEmpty()
-        if (MeaningField.Spanish in automatic || MeaningField.Spanish in applied) translationSource = ""
+        if (MeaningField.Spanish in automatic || MeaningField.Spanish in applied) {
+            translationSource = ""
+            translationEdited = false
+        }
         if (MeaningField.Example in automatic || MeaningField.Example in applied) exampleSource = ""
         if (MeaningField.Synonyms in automatic || MeaningField.Synonyms in applied) synonymSource = ""
         if (!manualIpa) {
@@ -529,47 +535,47 @@ internal fun CardEditor(
                         { Text(stringResource(R.string.ui_translation_required)) }
                     } else null,
                     singleLine = true)
-                    if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
+                    if (!translationEdited && spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
                         TranslationAttribution()
-                    } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
+                    } else if (!translationEdited && spanish.isNotBlank() &&
+                        (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
                         Text(stringResource(R.string.ui_translation_suggested_by_gemini_nano), style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 if (providerSense != null && providers != null) {
-                    TextButton(onClick = { comparing = !comparing }) { Text(stringResource(R.string.ui_compare_translations)) }
+                    val comparisonState = stringResource(if (comparing) R.string.ui_expanded else R.string.ui_collapsed)
+                    TextButton(
+                        modifier = Modifier.semantics { stateDescription = comparisonState },
+                        onClick = { focus.clearFocus(); comparing = !comparing },
+                        enabled = !busy
+                    ) {
+                        Text(stringResource(R.string.ui_compare_translations))
+                        Spacer(Modifier.width(6.dp))
+                        Icon(androidx.compose.ui.res.painterResource(if (comparing) R.drawable.expand_less else R.drawable.expand_more), null)
+                    }
                     if (comparing) {
-                        selected?.spanish?.distinct()?.forEach { value ->
-                            TextButton(onClick = { applyTranslation(value, providerSense.source, explicitly = true) }, enabled = !busy) {
-                                Text("Use dictionary translation · $value")
+                        val currentSource = if (translationEdited) null else translationSource.ifBlank {
+                            when {
+                                GEMINI_TRANSLATION in retainedSource -> GEMINI_TRANSLATION
+                                GOOGLE_TRANSLATION in retainedSource -> GOOGLE_TRANSLATION
+                                MeaningField.Spanish in automatic -> providerSense.source
+                                else -> null
                             }
                         }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(onClick = { focus.clearFocus(); requestGoogle(retry = googleResult?.isEmpty() == true) },
-                            enabled = !busy && !providers.google.loading) { Text(stringResource(R.string.ui_translate_with_google)) }
-                            TextButton(onClick = { focus.clearFocus(); requestNano(SenseRequest.Translation, retry = geminiResult?.isEmpty() == true) },
-                            enabled = !busy && !providers.translation.loading) { Text(stringResource(R.string.ui_translate_with_gemini)) }
-                        }
-                        googleResult?.firstOrNull()?.let { value ->
-                            TranslatedText(value, attributed = true)
-                            TextButton(onClick = { applyTranslation(value, GOOGLE_TRANSLATION, explicitly = true) }, enabled = !busy) {
-                                Text(stringResource(R.string.ui_use_google_translation))
-                            }
-                        }
-                        geminiResult?.firstOrNull()?.let { value ->
-                            Text(value)
-                            TextButton(onClick = { applyTranslation(value, GEMINI_TRANSLATION, explicitly = true) }, enabled = !busy) {
-                                Text(stringResource(R.string.ui_use_gemini_translation))
-                            }
-                        }
-                        if (providers.google.loading || providers.translation.loading) Text(stringResource(R.string.ui_finding_translations))
-                        else if (googleResult?.isEmpty() == true || geminiResult?.isEmpty() == true) {
-                            Text(stringResource(R.string.ui_a_provider_returned_no_suggestion_try_again_or_enter_you),
-                            style = MaterialTheme.typography.bodySmall)
-                        }
+                        TranslationComparison(
+                            spanish, currentSource, providerSense, providers, !busy,
+                            onApply = { value, source ->
+                                focus.clearFocus()
+                                applyTranslation(value, source, explicitly = true)
+                            },
+                            onGoogle = { requestGoogle(retry = true) },
+                            onGemini = { requestNano(SenseRequest.Translation, retry = true) }
+                        )
                     }
                 }
             }
             var guideExpanded by rememberSaveable { mutableStateOf(false) }
+            var guideEditing by rememberSaveable { mutableStateOf(false) }
             var guideTap by remember(id, currentQuery, selectedKey) { mutableStateOf(false) }
             var unsupportedHere by remember { mutableStateOf(false) }
             LaunchedEffect(guideTap, providerSense) {
@@ -595,11 +601,21 @@ internal fun CardEditor(
                     Icon(androidx.compose.ui.res.painterResource(if (guideExpanded) R.drawable.expand_less else R.drawable.expand_more), null)
                 }
                 if (guideExpanded) {
-                    if (usageNote.isNotBlank() && providerSense != null && providers?.guide?.result == null && providers?.guide?.loading == false && !(usageNotes === NanoUsageNotes && NanoUsageNotes.unsupported)) {
+                    val guideTerms = if (MeaningField.Synonyms.name in manualFields) {
+                        guideSynonyms(listOf(synonyms))
+                    } else {
+                        guideSynonyms(listOf(synonyms), selected?.synonymOptions.orEmpty(), providers?.synonyms?.result.orEmpty())
+                    }
+                    if (usageNote.isNotBlank() && !guideEditing) UsageGuideContent(usageNote, guideTerms)
+                    if (!guideEditing && usageNote.isNotBlank() && providerSense != null &&
+                        providers?.guide?.result == null && providers?.guide?.loading == false &&
+                        !(usageNotes === NanoUsageNotes && NanoUsageNotes.unsupported)) {
                         TextButton(onClick = { requestGuide(retry = true) }) { Text("Generate again") }
                     }
-                    if ((usageNote.isBlank() || providers?.guide?.result != null) && providers != null && providers.guide.result != UsageNoteResult.Unavailable) {
-                        UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) }, enabled = !busy,
+                    if (!guideEditing && providers != null && providers.guide.result != UsageNoteResult.Unavailable &&
+                        (usageNote.isBlank() || providers.guide.loading || providers.guide.result != null)) {
+                        UsageNoteOffer(providers.guide, { download -> requestGuide(retry = true, download = download) },
+                        enabled = !busy, synonyms = guideTerms,
                         onAddExample = { generated ->
                             if ((example.lines() + generatedExamples.lines()).none { it.trim().equals(generated, true) }) {
                                 touched = true
@@ -608,8 +624,16 @@ internal fun CardEditor(
                             }
                         })
                     }
-                    OutlinedTextField(if (guideEdited) usageNote else usageNote.ifBlank { suggestedGuide?.forStorage().orEmpty() },
-                    { touched = true; usageNote = it; guideEdited = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_edit_guide)) })
+                    if (guideEditing) OutlinedTextField(
+                        draft.usageNote,
+                        { touched = true; usageNote = it; guideEdited = true },
+                        Modifier.fillMaxWidth(),
+                        enabled = !busy,
+                        label = { Text(stringResource(R.string.ui_guide_text)) }
+                    )
+                    TextButton(onClick = { focus.clearFocus(); guideEditing = !guideEditing }, enabled = !busy) {
+                        Text(stringResource(if (guideEditing) R.string.ui_done_editing_guide else R.string.ui_edit_guide))
+                    }
                 }
             }
 

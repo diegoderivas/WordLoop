@@ -59,9 +59,9 @@ class ReviewGuideTest {
             compose.onNodeWithText("Show answer").assertDoesNotExist()
             val before = runBlocking { db.vocabulary().cards().first().single() }
             val book = compose.onNodeWithText("Usage guide")
-            book.performScrollTo().performClick()
+            book.performClick()
             tap("Retry")
-            compose.waitUntil(5000) { compose.onAllNodesWithText(note.forStorage()).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(5000) { compose.onAllNodesWithText(note.meaning).fetchSemanticsNodes().isNotEmpty() }
             tap("Back to review")
             assertEquals(before.copy(usageNote = note.forStorage()), runBlocking { db.vocabulary().cards().first().single() })
             assertEquals(previous, history())
@@ -76,8 +76,8 @@ class ReviewGuideTest {
             tap("English → Spanish")
             compose.onNodeWithText("/test/").assertExists()
             tap("Show answer")
-            book.performScrollTo().performClick()
-            compose.onNodeWithText(note.forStorage()).assertExists()
+            book.performClick()
+            compose.onNodeWithText(note.meaning).assertExists()
             assertEquals(2, calls)
             assertEquals(previous, history())
         } finally {

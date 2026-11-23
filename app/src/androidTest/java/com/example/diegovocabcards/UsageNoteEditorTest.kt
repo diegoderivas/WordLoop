@@ -30,7 +30,8 @@ class UsageNoteEditorTest {
         "A plane takes off when it leaves the ground. The phrase marks the beginning of a flight.",
         "Say take off from a runway or take off for a destination.",
         listOf("The flight took off on time.", "We took off just before dawn.", "The rescue helicopter took off for the island."),
-        "Land marks the end of a flight."
+        "Land marks the end of a flight.",
+        synonyms = listOf("lift off", "become airborne")
     )
 
     @Test fun savesOnlyAcceptedContentAndReopensItAlongsideManualExamples() {
@@ -73,7 +74,11 @@ class UsageNoteEditorTest {
             tap("Usage guide")
             waitFor(note.meaning, substring = true)
             compose.onNodeWithText(note.meaning, substring = true).performScrollTo().assertIsDisplayed()
-            captureEmulator("guia-de-uso-claro.png")
+            compose.onNodeWithText("Synonyms").assertExists()
+            compose.onNodeWithText("lift off").assertExists()
+            compose.onNodeWithText("How to use it").assertExists()
+            compose.onNodeWithText("Examples").assertExists()
+            captureEmulator("study-polish-usage-guide-light.png")
             tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
             disposeTestContent()
@@ -112,7 +117,8 @@ class UsageNoteEditorTest {
             waitFor(meaning.definition)
             tap(meaning.definition)
             tap("Compare translations")
-            waitFor("Use Gemini translation")
+            waitFor("Gemini Nano")
+            tap("Compare translations")
             compose.onNodeWithText("Spanish translation").assertTextContains("despegar")
             tap("Card details")
             val example = compose.onNodeWithText("Example")

@@ -66,7 +66,7 @@ private fun ReviewGuideDialog(
                 Text(card.english, style = MaterialTheme.typography.titleMedium)
                 if (card.usageNote.isNotBlank()) {
                     Text(stringResource(R.string.ui_generated_by_gemini_nano), style = MaterialTheme.typography.labelMedium)
-                    Text(card.usageNote)
+                    UsageGuideContent(card.usageNote, guideSynonyms(listOf(card.synonyms)))
                 } else {
                     Text(when (status) {
                         UsageNoteResult.Downloadable -> "Download Gemini Nano to prepare the guide."

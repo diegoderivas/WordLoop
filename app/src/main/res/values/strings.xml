@@ -139,6 +139,13 @@
     <string name="ui_no_meaning_suggestions">No meanings found. You can enter this card yourself.</string>
     <string name="ui_meaning_lookup_unavailable">Lookup unavailable. You can enter this card yourself.</string>
     <string name="ui_meaning_suggestions">Meaning suggestions</string>
+    <string name="ui_choose_translation_suggestion">Choose a suggestion to use it.</string>
+    <string name="ui_gemini_nano">Gemini Nano</string>
+    <string name="ui_google_translate">Google Translate</string>
+    <string name="ui_translation_dictionary">Dictionary</string>
+    <string name="ui_translation_no_suggestion">No suggestion available.</string>
+    <string name="ui_guide_text">Guide text</string>
+    <string name="ui_done_editing_guide">Done editing guide</string>
     <string name="ui_meaning">Meaning</string>
     <string name="ui_card_translation">%1$s translation</string>
     <string name="ui_translation_required">Required to save the card.</string>

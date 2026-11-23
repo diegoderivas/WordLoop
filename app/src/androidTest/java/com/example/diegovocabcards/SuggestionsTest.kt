@@ -2,6 +2,10 @@ package com.example.diegovocabcards
 
 import android.app.Application
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import com.example.diegovocabcards.ui.theme.DiegoVocabCardsTheme
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -132,14 +136,14 @@ class SuggestionsTest {
             nano.getValue(senses[1]).complete("destituir")
             waitText("destituir")
             google.getValue(senses[1]).complete("echar")
-            compose.waitUntil { compose.onAllNodesWithText("Use Google translation").fetchSemanticsNodes().isNotEmpty() }
+            compose.translationOption("echar").assertIsNotSelected()
             spanish.assertTextContains("destituir")
             choose(2)
             google.getValue(senses[2]).complete("disparar")
             waitText("disparar")
             spanish.performScrollTo().performTextClearance()
             nano.getValue(senses[2]).complete("hacer fuego")
-            compose.waitUntil { compose.onAllNodesWithText("Use Gemini translation").fetchSemanticsNodes().isNotEmpty() }
+            compose.translationOption("hacer fuego").assertIsNotSelected()
             compose.onNodeWithText("Save card").assertIsNotEnabled()
         } finally {
             (google.values + nano.values).forEach { it.cancel() }
@@ -256,7 +260,7 @@ class SuggestionsTest {
             compose.waitUntil(5000) { compose.onAllNodesWithText(removal.definition).fetchSemanticsNodes().isNotEmpty() }
             tap(removal.definition)
             tap("Compare translations")
-            compose.onNodeWithText("Translate with Google").assertExists()
+            compose.onNodeWithText("Google Translate").assertExists()
             tap("Change meaning")
             tap(flight.definition)
             compose.waitUntil(5000) { firstStarted.isCompleted }
@@ -277,7 +281,7 @@ class SuggestionsTest {
             tap(breakTime.definition)
             spanish.assertTextContains("mi corrección")
             assertEquals(3, googleCalls)
-            tap("Use Google translation")
+            compose.translationOption("tomarse un descanso").performClick()
             tap("Save card")
             compose.waitUntil(5000) { model.saved != null }
             val saved = runBlocking { db.vocabulary().cards().first().single() }
@@ -304,21 +308,23 @@ class SuggestionsTest {
             val delayed = CompletableDeferred<String>()
             val started = CompletableDeferred<Unit>()
             compose.setContent {
-                Column(Modifier.safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())) {
-                    CardEditor(null, "fire", emptyList(), emptyList(), model,
-                        lookup = { if (it == "fire") listOf(flame, dismiss) else listOf(dismissed) },
-                        translate = { _, _ -> "echar" },
-                        nanoOptions = { _, sense, task ->
-                            when {
-                                sense == flame && task == SenseRequest.Translation -> withContext(NonCancellable) {
-                                    started.complete(Unit)
-                                    listOf(delayed.await())
+                DiegoVocabCardsTheme(darkTheme = false) {
+                    Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp)) {
+                        CardEditor(null, "fire", emptyList(), emptyList(), model,
+                            lookup = { if (it == "fire") listOf(flame, dismiss) else listOf(dismissed) },
+                            translate = { _, _ -> "echar" },
+                            nanoOptions = { _, sense, task ->
+                                when {
+                                    sense == flame && task == SenseRequest.Translation -> withContext(NonCancellable) {
+                                        started.complete(Unit)
+                                        listOf(delayed.await())
+                                    }
+                                    task == SenseRequest.Synonyms -> listOf("sack", "discharge")
+                                    sense == dismiss -> listOf("destituir")
+                                    else -> listOf("ser despedido")
                                 }
-                                task == SenseRequest.Synonyms -> listOf("sack", "discharge")
-                                sense == dismiss -> listOf("destituir")
-                                else -> listOf("ser despedido")
-                            }
-                        }) {}
+                            }) {}
+                    }
                 }
             }
             fun tap(label: String) = compose.tapControl(label)
@@ -335,19 +341,18 @@ class SuggestionsTest {
             tap(dismiss.definition)
             delayed.complete("llama")
             spanish.performScrollTo().performTextReplacement("mi traducción")
-            tap("Translate with Google")
-            tap("Translate with Gemini")
-            waitFor("destituir")
+            tap("Compare translations")
+            tap("Compare translations")
+            compose.translationOption("destituir").assertIsNotSelected()
             compose.onNodeWithText("llama").assertDoesNotExist()
-            compose.onNodeWithText("echar").assertExists()
-            compose.onNodeWithText("Use dictionary translation · despedir").assertExists()
+            compose.translationOption("echar").assertIsNotSelected()
+            compose.translationOption("despedir").assertIsNotSelected()
             spanish.assertTextContains("mi traducción")
-            spanish.performScrollTo().performTouchInput { click() }
-            captureEmulator("autocompletado-editor-teclado-claro.png")
-            compose.onNodeWithText("Use Gemini translation").performScrollTo()
-            captureEmulator("editor-propuestas-claro.png")
-            tap("Use Google translation")
-            tap("Use Gemini translation")
+            compose.onNodeWithText("Translation suggested by Gemini Nano").assertDoesNotExist()
+            compose.translationOption("despedir").assertIsDisplayed()
+            captureEmulator("study-polish-translations-light.png")
+            compose.translationOption("echar").performClick().assertIsSelected()
+            compose.translationOption("destituir").performClick().assertIsSelected()
             spanish.assertTextContains("destituir")
             tap("Card details")
             waitFor("sack")
@@ -365,9 +370,12 @@ class SuggestionsTest {
             waitFor(dismissed.definition)
             tap(dismissed.definition)
             compose.onNodeWithText("Keep my edits").performClick()
-            tap("Translate with Gemini")
-            tap("Use Gemini translation")
+            tap("Compare translations")
+            val matchingOptions = compose.onAllNodes(hasText("ser despedido") and isSelectable())
+            compose.waitUntil(5000) { matchingOptions.fetchSemanticsNodes().size == 2 }
+            matchingOptions.onFirst().performScrollTo().performClick().assertIsSelected()
             spanish.assertTextContains("ser despedido")
+            compose.onNodeWithText("Translation suggested by Gemini Nano").assertExists()
         } finally { db.close() }
     }
 
@@ -418,4 +426,10 @@ class SuggestionsTest {
             db.close()
         }
     }
+}
+
+private fun androidx.compose.ui.test.junit4.ComposeTestRule.translationOption(value: String): SemanticsNodeInteraction {
+    val option = hasText(value) and isSelectable()
+    waitUntil(5000) { onAllNodes(option).fetchSemanticsNodes().isNotEmpty() }
+    return onNode(option).performScrollTo()
 }

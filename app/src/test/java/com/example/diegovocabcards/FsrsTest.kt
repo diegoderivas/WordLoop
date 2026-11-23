@@ -11,6 +11,17 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class FsrsTest {
+    @Test fun remainingIntervalsRoundWithoutChangingTheirUnitsEarly() {
+        val min = 60_000L
+        fun interval(ms: Long) = com.example.diegovocabcards.review.formatReviewRemaining(ms)
+        assertEquals("1 min", interval(10_000L))
+        assertEquals("2 min", interval(90_000L))
+        assertEquals("59 min", interval(60 * min - 1))
+        assertEquals("1 hour", interval(60 * min))
+        assertEquals("2 hours", interval(90 * min))
+        assertEquals("20 hours", interval(1170 * min))
+        assertEquals("1 day", interval(1440 * min))
+    }
     private val start = Instant.parse("2022-11-29T12:30:00Z").toEpochMilli()
 
     @Test fun matchesPublishedJavaFsrsReferenceIncludingLapse() {
