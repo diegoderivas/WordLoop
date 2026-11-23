@@ -16,6 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -233,21 +238,24 @@ internal fun CardEditor(
             }
         }
     }
+    val lookingUp = stringResource(R.string.ui_looking_up_meanings)
+    val noMeanings = stringResource(R.string.ui_no_meaning_suggestions)
+    val lookupUnavailable = stringResource(R.string.ui_meaning_lookup_unavailable)
     LaunchedEffect(currentQuery) {
         if (currentQuery.length >= 2) {
             kotlinx.coroutines.delay(600)
-            queryState = "Looking up meanings…"
+            queryState = lookingUp
             try {
                 val result = distinctMeanings(lookup?.invoke(currentQuery) ?: Dictionary.lookup(currentQuery, language))
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 suggestions = result
                 lookupSucceeded = true
-                queryState = if (result.isEmpty()) "No meanings found. You can enter this card yourself." else ""
+                queryState = if (result.isEmpty()) noMeanings else ""
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 lookupSucceeded = false
-                queryState = "Lookup unavailable. You can enter this card yourself."
+                queryState = lookupUnavailable
             }
         }
     }
@@ -447,9 +455,20 @@ internal fun CardEditor(
                     }
                 }, confirmButton = { TextButton(onClick = { viewingMatches = false }) { Text(stringResource(R.string.ui_close)) } })
             }
-            if (suggestions.isNotEmpty() || queryState.isNotEmpty()) {
-                Text(if (selected == null || changingMeaning) "Choose a meaning" else "Meaning", style = MaterialTheme.typography.titleMedium)
-                if (queryState.isNotEmpty()) Text(queryState, style = MaterialTheme.typography.bodyMedium)
+            if (queryState.isNotEmpty()) {
+                Text(queryState, Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            if (suggestions.isNotEmpty()) {
+                val showingChoices = selected == null || changingMeaning
+                Text(
+                    stringResource(if (showingChoices) R.string.ui_meaning_suggestions else R.string.ui_meaning),
+                    Modifier.semantics {
+                        heading()
+                        if (showingChoices) liveRegion = LiveRegionMode.Polite
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
                 fun choose(suggestion: Suggestion) {
                     changingMeaning = false
                     more = false
@@ -505,7 +524,11 @@ internal fun CardEditor(
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     OutlinedTextField(spanish, { editValue(MeaningField.Spanish, it) }, Modifier.fillMaxWidth(), enabled = !busy,
-                    label = { Text("${languageName(language)} translation") }, singleLine = true)
+                    label = { Text(stringResource(R.string.ui_card_translation, languageName(language))) },
+                    supportingText = if (spanish.isBlank()) {
+                        { Text(stringResource(R.string.ui_translation_required)) }
+                    } else null,
+                    singleLine = true)
                     if (spanish.isNotBlank() && (translationSource == GOOGLE_TRANSLATION || GOOGLE_TRANSLATION in retainedSource)) {
                         TranslationAttribution()
                     } else if (spanish.isNotBlank() && (translationSource == GEMINI_TRANSLATION || GEMINI_TRANSLATION in retainedSource)) {
@@ -558,11 +581,15 @@ internal fun CardEditor(
                     confirmButton = { TextButton(onClick = { guideTap = false }) { Text("OK") } })
             }
             Section {
-                TextButton(onClick = {
-                    guideExpanded = !guideExpanded
-                    guideTap = guideExpanded
-                    if (guideExpanded && usageNote.isBlank() && providers?.guide?.result == null) requestGuide()
-                }) {
+                val guideState = stringResource(if (guideExpanded) R.string.ui_expanded else R.string.ui_collapsed)
+                TextButton(
+                    modifier = Modifier.semantics { stateDescription = guideState },
+                    onClick = {
+                        guideExpanded = !guideExpanded
+                        guideTap = guideExpanded
+                        if (guideExpanded && usageNote.isBlank() && providers?.guide?.result == null) requestGuide()
+                    }
+                ) {
                     Text(stringResource(R.string.ui_usage_guide))
                     Spacer(Modifier.width(6.dp))
                     Icon(androidx.compose.ui.res.painterResource(if (guideExpanded) R.drawable.expand_less else R.drawable.expand_more), null)
@@ -601,8 +628,11 @@ internal fun CardEditor(
             }
         }
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (model.failedId == id) Text(stringResource(R.string.ui_could_not_save_please_try_again),
-            color = MaterialTheme.colorScheme.error)
+            if (model.failedId == id) {
+                Text(stringResource(R.string.ui_could_not_save_please_try_again),
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    color = MaterialTheme.colorScheme.error)
+            }
             Button(onClick = { save(if (fromStudy) AfterSave.Study else AfterSave.Library) }, enabled = valid) { Text(if (original == null) "Save card" else "Save changes") }
             if (original == null) {
                 OutlinedButton(onClick = { save(AfterSave.AnotherCard) }, enabled = valid) {

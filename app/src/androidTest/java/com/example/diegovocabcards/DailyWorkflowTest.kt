@@ -11,6 +11,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.diegovocabcards.data.LibrarySettings
 import com.example.diegovocabcards.data.VocabularyDatabase
+import com.example.diegovocabcards.ui.theme.DiegoVocabCardsTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -28,11 +29,20 @@ class DailyWorkflowTest {
         try {
             runBlocking { db.vocabulary().save("job", "fire", "despedir", "", "trabajo", senseCategories = "verb") }
             val model = VocabularyModel(app, db)
-            compose.setContent { if (showing.value) VocabCardsApp(Appearance.Light, model) {} }
+            compose.setContent {
+                if (showing.value) DiegoVocabCardsTheme(darkTheme = false) {
+                    VocabCardsApp(Appearance.Light, model, dictionaryLookup = { error("Offline dictionary fixture") }) {}
+                }
+            }
             tap("Add card")
             enter("English word or phrase", "fire")
             compose.onNodeWithText("View cards (1)", substring = true).assertExists()
+            waitFor("Lookup unavailable. You can enter this card yourself.")
+            compose.onNodeWithText("Required to save the card.").performScrollTo().assertIsDisplayed()
+            captureEmulator("ui-audit-editor-offline-light.png")
             enter("Spanish translation", "fuego")
+            compose.onNodeWithText("Save card").assertIsDisplayed().assertIsEnabled()
+            captureEmulator("ui-audit-editor-keyboard-light.png")
             tap("Card details")
             enter("New tag", "calor")
             tap("Done")
@@ -44,6 +54,7 @@ class DailyWorkflowTest {
             compose.onNodeWithText("Spanish translation").performScrollTo().performTextReplacement("fuego o incendio")
             tap("Save changes")
             waitFor("Search English or Spanish")
+            compose.onNodeWithText("fuego o incendio").assertExists()
             tap("Filters")
             tap("All tags")
             compose.onAllNodesWithText("calor").filter(hasAnyAncestor(isPopup())).onFirst().performClick()
@@ -87,10 +98,10 @@ class DailyWorkflowTest {
             tap("Restore backup")
             val document = systemNode { it.text?.toString() == name }
             systemClick(document)
-            waitFor("Confirm restore")
+            waitFor("Replace library")
             compose.onNodeWithText("Export current library first").assertExists()
-            captureEmulator("respaldo-confirmacion-claro.png")
-            tap("Confirm restore")
+            captureEmulator("ui-audit-restore-light.png")
+            tap("Replace library")
             waitFor("Library restored.")
             assertEquals(before, runBlocking { db.backup().snapshot(LibrarySettings()) })
         } finally {
@@ -111,7 +122,7 @@ class DailyWorkflowTest {
         compose.waitUntil(10000) { compose.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
         val node = compose.onNode(hasText(text) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
-        node.performClick()
+        node.assertIsEnabled().performClick()
     }
 
     private fun systemNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo {

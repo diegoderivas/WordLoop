@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.room.Room
@@ -205,6 +207,11 @@ class SuggestionsTest {
             compose.onNodeWithText("Save card").assertIsNotEnabled()
             english.performScrollTo().performTextReplacement("offline")
             waitFor("Lookup unavailable", substring = true)
+            compose.onNodeWithText("Meaning suggestions").assertDoesNotExist()
+            compose.onNodeWithText("Lookup unavailable", substring = true).assert(
+                SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
+            )
+            compose.onNodeWithText("Required to save the card.").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Spanish translation").performScrollTo().performTextInput("sin conexión")
             tap("Save card")
             compose.waitUntil(5000) { model.saved != null }

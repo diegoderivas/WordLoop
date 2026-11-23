@@ -19,7 +19,7 @@ class QuickEntryTest {
         compose.waitUntil(10000) { compose.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
         val node = compose.onNode(hasText(text) and hasClickAction())
         if (hasAnyAncestor(hasScrollAction()).matches(node.fetchSemanticsNode())) node.performScrollTo()
-        node.performClick()
+        node.assertIsEnabled().performClick()
     }
     private fun enter(label: String, value: String) =
         compose.onNodeWithText(label).performScrollTo().performTextInput(value)
@@ -46,7 +46,7 @@ class QuickEntryTest {
                     enter("New tag", "personal")
                     click("Done")
                     db.openHelper.writableDatabase.execSQL(
-                        "CREATE TEMP TRIGGER reject_save BEFORE INSERT ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
+                        "CREATE TRIGGER reject_save BEFORE INSERT ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
                     )
                     click("Save and add another")
                     compose.waitUntil(5000) { model.failedId != null }

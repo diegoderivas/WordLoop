@@ -52,7 +52,8 @@ class PersonalEditionTest {
     @Test fun libraryLanguageFilterCanBeRemovedAndPackUsesTheFilteredCards() = withApp { db, _ ->
         runBlocking {
             db.vocabulary().save("es", "bloom", "florecer", "", "")
-            db.vocabulary().save("ja", "bloom", "咲く", "", "", language = "ja")
+            db.vocabulary().save("ja", "bloom", "咲く", "The roses bloom.", "gardening",
+                definition = "To produce flowers.", synonyms = "flower", senseCategories = "verb", language = "ja")
             db.reviews().rate("es", Direction.EN_ES, 0, Rating.GOOD, System.currentTimeMillis())
         }
         waitFor("Answered today")
@@ -63,8 +64,14 @@ class PersonalEditionTest {
         tap("Done")
         waitFor("咲く")
         compose.onNodeWithText("florecer").assertDoesNotExist()
-        captureEmulator("personal-edition-language-filter-light.png")
-        tap("Card packs")
+        captureEmulator("ui-audit-library-light.png")
+        tap("咲く")
+        compose.onNodeWithText("Meaning").assertIsDisplayed()
+        compose.onNodeWithText("Examples").assertIsDisplayed()
+        compose.onNodeWithText("Synonyms").assertIsDisplayed()
+        captureEmulator("ui-audit-card-details-light.png")
+        tap("Close")
+        compose.onNodeWithContentDescription("Card packs").performClick()
         tap("Share cards")
         tap("Select all shown")
         compose.onNodeWithText("Share 1 card").assertExists()
@@ -72,6 +79,20 @@ class PersonalEditionTest {
         tap("Cancel")
         compose.onNodeWithContentDescription("Remove Japanese filter").performClick()
         waitFor("florecer")
+    }
+
+    @Test fun homeShowsTheNextReviewWhenCaughtUp() = withApp { db, _ ->
+        runBlocking {
+            db.vocabulary().save("mist", "mist", "niebla", "", "")
+            for (direction in Direction.entries) {
+                db.reviews().rate("mist", direction, 0, Rating.GOOD, System.currentTimeMillis())
+            }
+        }
+        waitFor("You’re caught up")
+        compose.onNodeWithText("Next review:", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Start review").assertIsNotEnabled()
+        compose.onNode(hasText("Add card") and hasClickAction()).assertIsDisplayed()
+        captureEmulator("ui-audit-home-caught-up-light.png")
     }
 
     @Test fun packAddsMixedCardsOnceAndKeepsExistingHistoryAndEdits() = withApp { db, model ->

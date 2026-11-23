@@ -43,6 +43,8 @@ class LibraryDeletionTest {
                 "CREATE TEMP TRIGGER prevent_delete BEFORE DELETE ON Sense BEGIN SELECT RAISE(ABORT, 'test'); END"
             )
             trash.performClick()
+            compose.onNodeWithText("Delete “fire → despedir”?").assertIsDisplayed()
+            compose.onNodeWithText("This will delete this card and its review history in both directions.").assertIsDisplayed()
             compose.onNodeWithText("Delete").performClick()
             compose.waitUntil(5000) {
                 compose.onAllNodesWithText("Could not delete the card.", substring = true).fetchSemanticsNodes().isNotEmpty()

@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
@@ -44,60 +45,53 @@ internal fun StudyPresentation(
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(caption, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            if (onDelete != null) {
-                IconButton(onClick = { deleteFailed = false; confirming = true },
-                    enabled = !ratingPending && !deleting, modifier = Modifier.size(48.dp)) {
-                    Icon(painterResource(R.drawable.delete_card_outline), stringResource(R.string.ui_delete_card),
-                        tint = MaterialTheme.colorScheme.error)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val questionInset = if (LocalDensity.current.fontScale >= 1.5f) 0.dp else minOf(maxHeight * 0.24f, 144.dp)
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(caption, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                if (onDelete != null) {
+                    IconButton(onClick = { deleteFailed = false; confirming = true },
+                        enabled = !ratingPending && !deleting, modifier = Modifier.size(48.dp)) {
+                        Icon(painterResource(R.drawable.delete_card_outline), stringResource(R.string.ui_delete_card),
+                            tint = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
-        }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
-                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(top = questionInset),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 StudyTile(card, spanishFirst, revealed)
                 if (revealed) cardTools(card)
             }
+            if (revealed) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
+            else Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) { Text(stringResource(R.string.ui_show_answer)) }
         }
-        if (revealed) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
-        else Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) { Text(stringResource(R.string.ui_show_answer)) }
     }
     if (confirming && onDelete != null) {
-        AlertDialog(
-            onDismissRequest = { if (!deleting) confirming = false },
-            title = { Text(stringResource(R.string.ui_confirm_study_delete, card.english, card.spanish)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.ui_study_delete_history))
-                    if (deleteFailed) Text(stringResource(R.string.ui_could_not_delete_the_card_please_try_again),
-                        color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirming = false }, enabled = !deleting) {
-                    Text(stringResource(R.string.ui_cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = !deleting && !ratingPending, onClick = {
-                    if (!deleting && !ratingPending) {
-                        deleting = true
-                        deleteFailed = false
-                        scope.launch {
-                            try {
-                                onDelete(card.id)
-                                confirming = false
-                            } catch (_: SQLiteException) {
-                                deleteFailed = true
-                            } finally {
-                                deleting = false
-                            }
+        DeleteMeaningDialog(
+            card = card,
+            deleting = deleting,
+            failed = deleteFailed,
+            confirmEnabled = !ratingPending,
+            onCancel = { confirming = false },
+            onConfirm = {
+                if (!deleting && !ratingPending) {
+                    deleting = true
+                    deleteFailed = false
+                    scope.launch {
+                        try {
+                            onDelete(card.id)
+                            confirming = false
+                        } catch (_: SQLiteException) {
+                            deleteFailed = true
+                        } finally {
+                            deleting = false
                         }
                     }
-                }) { Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error) }
+                }
             }
         )
     }

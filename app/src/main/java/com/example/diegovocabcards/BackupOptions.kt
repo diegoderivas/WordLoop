@@ -82,13 +82,19 @@ internal fun BackupOptions(dao: BackupDao, defaults: LibrarySettings) {
                     if (message.isNotBlank()) Text(message)
                 }
             },
-            confirmButton = { Button(enabled = !busy, onClick = {
+            confirmButton = { Button(
+                enabled = !busy,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                ),
+                onClick = {
                 work {
                     dao.restore(incoming)
                     preview = null
                     message = "Library restored."
                 }
-            }) { Text(stringResource(R.string.ui_confirm_restore)) } },
+            }) { Text(stringResource(R.string.ui_replace_library)) } },
             dismissButton = { TextButton(onClick = { preview = null; message = "" }, enabled = !busy) { Text(stringResource(R.string.ui_cancel)) } }
         )
     }

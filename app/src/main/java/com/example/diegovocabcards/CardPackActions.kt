@@ -15,6 +15,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -27,7 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun CardPackActions(cards: List<Card>, importCards: suspend (List<Card>) -> Int) {
+internal fun CardPackActions(cards: List<Card>, importCards: suspend (List<Card>) -> Int, onMessage: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menu by rememberSaveable { mutableStateOf(false) }
@@ -54,11 +56,13 @@ internal fun CardPackActions(cards: List<Card>, importCards: suspend (List<Card>
             }
         }
     }
-    TextButton(onClick = { menu = true }, enabled = !busy) { Text("Card packs") }
-    if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+    IconButton(onClick = { menu = true }, enabled = !busy) {
+        Icon(painterResource(R.drawable.more_actions), stringResource(R.string.ui_card_packs))
+    }
+    LaunchedEffect(message) { onMessage(message) }
     if (menu) AlertDialog(
         onDismissRequest = { menu = false },
-        title = { Text("Card packs") },
+        title = { Text(stringResource(R.string.ui_card_packs)) },
         text = { Text("Share vocabulary or add cards from someone else. Packs keep your study history and settings private.") },
         confirmButton = {
             TextButton(enabled = cards.isNotEmpty(), onClick = {

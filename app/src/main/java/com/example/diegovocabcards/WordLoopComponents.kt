@@ -9,6 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.example.diegovocabcards.data.Card
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -22,8 +25,8 @@ internal fun Section(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 internal fun SummaryRow(label: String, count: Int) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, Modifier.weight(1f))
         Text(count.toString(), style = MaterialTheme.typography.titleMedium)
     }
 }
@@ -37,7 +40,12 @@ internal fun detailSummary(example: String, synonyms: String): String {
 }
 
 @Composable
-internal fun DetailPage(title: String, onDone: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun DetailPage(
+    title: String,
+    onDone: () -> Unit,
+    actionLabel: String = stringResource(R.string.ui_done),
+    content: @Composable ColumnScope.() -> Unit
+) {
     Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             val view = androidx.compose.ui.platform.LocalView.current
@@ -52,13 +60,43 @@ internal fun DetailPage(title: String, onDone: () -> Unit, content: @Composable 
             }
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium)
+                Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
-                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_done)) }
+                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
             }
         }
     }
+}
+
+@Composable
+internal fun DeleteMeaningDialog(
+    card: Card,
+    deleting: Boolean,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+    failed: Boolean = false,
+    confirmEnabled: Boolean = true
+) {
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onCancel() },
+        title = { Text(stringResource(R.string.ui_confirm_study_delete, card.english, card.spanish)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.ui_study_delete_history))
+                if (failed) Text(stringResource(R.string.ui_could_not_delete_the_card_please_try_again),
+                    color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel, enabled = !deleting) { Text(stringResource(R.string.ui_cancel)) }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !deleting && confirmEnabled) {
+                Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error)
+            }
+        }
+    )
 }
 
 internal fun sourceDisplay(line: String): String = when (line) {

@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
@@ -75,20 +77,33 @@ internal fun ReviewDirections(
         return
     }
     val mixed = queues.getValue(null)
+    val caughtUp = mixed.ready.isEmpty() && (mixed.nextDue != null || LocalStudyCards.current.isNotEmpty())
     Card(colors = CardDefaults.cardColors(containerColor = if (home) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (home) "Today’s review" else "Today", style = MaterialTheme.typography.titleLarge)
-            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.questions, mixed.ready.size, mixed.ready.size))
-            if (home) for (side in listOf(Direction.EN_ES, Direction.ES_EN)) {
-                SummaryRow(side.labelFor(LocalStudyCards.current.translationLabel()), queues.getValue(side).ready.size)
+            Text(
+                if (caughtUp) stringResource(R.string.ui_caught_up) else if (home) "Today’s review" else "Today",
+                Modifier.semantics { heading() },
+                style = MaterialTheme.typography.titleLarge
+            )
+            if (caughtUp) {
+                mixed.nextDue?.let { Text(stringResource(R.string.ui_next_review_date, formatReviewDate(it))) }
             } else {
+                Text(pluralStringResource(R.plurals.questions, mixed.ready.size, mixed.ready.size))
+            }
+            if (!caughtUp && home) for (side in listOf(Direction.EN_ES, Direction.ES_EN)) {
+                SummaryRow(side.labelFor(LocalStudyCards.current.translationLabel()), queues.getValue(side).ready.size)
+            } else if (!caughtUp) {
                 SummaryRow("Learning", mixed.ready.count { it.learning })
                 SummaryRow("Due for review", mixed.dueCount - mixed.ready.count { it.learning })
                 SummaryRow("New", mixed.newCount)
             }
             Button(onClick = { onStart(null, false) }, enabled = mixed.ready.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
-                colors = if (home) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary) else ButtonDefaults.buttonColors()) { Text(stringResource(R.string.ui_start_review)) }
+                colors = if (home) ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    disabledContainerColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f),
+                    disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f)
+                ) else ButtonDefaults.buttonColors()) { Text(stringResource(R.string.ui_start_review)) }
         }
     }
     val quickCount = remember(mixed) { mixed.quickBatch().size }
@@ -97,7 +112,6 @@ internal fun ReviewDirections(
         Text(if (quickCount == 0) stringResource(R.string.ui_quick_review)
             else "Quick review · " + pluralStringResource(R.plurals.questions, quickCount, quickCount))
     }
-    if (mixed.ready.isEmpty()) mixed.nextDue?.let { Text("Next review: ${formatReviewDate(it)}") }
     var advanced by rememberSaveable { mutableStateOf(false) }
     TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.ui_advanced_options)) }
     if (advanced) for (direction in Direction.entries) {
@@ -264,14 +278,8 @@ private fun StudyQuestion(
                                     textAlign = TextAlign.Center)
                             }
                         }
-                        val padding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-                        if (rating == Rating.GOOD) {
-                            Button(onClick = submit, modifier = modifier, enabled = !saving,
-                                contentPadding = padding, content = caption)
-                        } else {
-                            OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
-                                contentPadding = padding, content = caption)
-                        }
+                        OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
+                            contentPadding = PaddingValues(8.dp), content = caption)
                     }
                 }
             }

@@ -16,8 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
@@ -38,6 +41,7 @@ internal fun Library(
     var confirmId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var deleteFailed by remember { mutableStateOf(false) }
+    var packMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     var search by rememberSaveable { mutableStateOf("") }
@@ -69,11 +73,17 @@ internal fun Library(
         }
     }
     val active = listOfNotNull(filter, direction, status, language).size
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        TagMenu(order.label, LibraryOrder.entries.map { it.label }) { choice -> order = LibraryOrder.entries.first { it.label == choice } }
-        OutlinedButton(onClick = { focus.clearFocus(); filters = true }) { Text(if (active == 0) "Filters" else "Filters ($active)") }
-        TextButton(onClick = onAdd) { Text(stringResource(R.string.ui_add_card)) }
-        if (model != null) CardPackActions(visible.map { it.card }, model::importCards)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        FlowRow(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TagMenu(order.label, LibraryOrder.entries.map { it.label }) { choice -> order = LibraryOrder.entries.first { it.label == choice } }
+            OutlinedButton(onClick = { focus.clearFocus(); filters = true }) { Text(if (active == 0) "Filters" else "Filters ($active)") }
+            TextButton(onClick = onAdd) { Text(stringResource(R.string.ui_add_card)) }
+        }
+        if (model != null) CardPackActions(visible.map { it.card }, model::importCards) { packMessage = it }
     }
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(stringResource(R.string.ui_organise_library)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -98,9 +108,28 @@ internal fun Library(
         language?.let { ActiveLibraryFilter(languageName(it)) { language = null } }
         filter?.let { ActiveLibraryFilter("Tag · $it") { onFilter(null) } }
     }
+    if (packMessage.isNotBlank()) Text(
+        packMessage, Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        style = MaterialTheme.typography.bodySmall
+    )
     if (filter != null) TextButton(onClick = { onPractice(filter) }) { Text(stringResource(R.string.ui_practise_this_tag)) }
     if (deleteFailed) Text(stringResource(R.string.ui_could_not_delete_the_card_please_try_again), color = MaterialTheme.colorScheme.error)
-    if (visible.isEmpty()) Text(if (cards.isEmpty()) "Your library is empty." else "No matching cards.")
+    if (visible.isEmpty()) {
+        Text(stringResource(if (cards.isEmpty()) R.string.ui_library_empty else R.string.ui_no_matching_cards))
+        if (cards.isNotEmpty() && (search.isNotBlank() || active > 0)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (search.isNotBlank()) TextButton(onClick = { search = ""; focus.clearFocus() }) {
+                    Text(stringResource(R.string.ui_clear_search))
+                }
+                if (active > 0) TextButton(onClick = {
+                    direction = null
+                    status = null
+                    language = null
+                    onFilter(null)
+                }) { Text(stringResource(R.string.ui_clear_filters)) }
+            }
+        }
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(progress, schedules) {
         while (progress) {
@@ -139,13 +168,32 @@ internal fun Library(
         }
     }
     cards.find { it.id == selectedId }?.let { card ->
-        DetailPage("Card details", { selectedId = null }) {
+        DetailPage(stringResource(R.string.ui_card_details), { selectedId = null }, stringResource(R.string.ui_close)) {
             Section {
                 EnglishPronunciation(card.english, card.ipa) { Text(card.english, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium) }
                 if (cards.any { it.language == "ja" }) Text(languageName(card.language), style = MaterialTheme.typography.labelSmall)
-                    TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
-                listOf(card.definition, card.example, card.generatedExamples, card.synonyms, card.senseCategories, card.tags.joinToString(" · "))
-                    .filter(String::isNotBlank).forEach { Text(it) }
+                TranslatedText(card.spanish, attributed = GOOGLE_TRANSLATION in card.source)
+                if (card.definition.isNotBlank()) {
+                    CardDetailHeading(stringResource(R.string.ui_meaning))
+                    Text(card.definition)
+                }
+                if (card.example.isNotBlank() || card.generatedExamples.isNotBlank()) {
+                    CardDetailHeading(stringResource(R.string.ui_examples))
+                    card.example.lines().filter(String::isNotBlank).forEach { Text(it) }
+                    SavedUsageContent("", card.generatedExamples)
+                }
+                if (card.synonyms.isNotBlank()) {
+                    CardDetailHeading(stringResource(R.string.ui_synonyms))
+                    Text(card.synonyms)
+                }
+                if (card.senseCategories.isNotBlank()) {
+                    CardDetailHeading(stringResource(R.string.ui_word_class))
+                    Text(card.senseCategories.split(',').joinToString(" · ") { categoryLabel(it.trim()) })
+                }
+                if (card.tags.isNotEmpty()) {
+                    CardDetailHeading(stringResource(R.string.ui_tags))
+                    Text(card.tags.joinToString(" · "))
+                }
                 SavedUsageContent(card.usageNote, "")
             }
             Button(onClick = { selectedId = null; onEdit(card.id) }) { Text(stringResource(R.string.ui_edit_card)) }
@@ -155,18 +203,32 @@ internal fun Library(
         }
     }
     cards.find { it.id == confirmId }?.let { card ->
-        AlertDialog(onDismissRequest = { if (!deleting) confirmId = null }, title = { Text(stringResource(R.string.ui_delete_this_meaning)) },
-            text = { Text(card.english + " · " + card.spanish) },
-            dismissButton = { TextButton(enabled = !deleting, onClick = { confirmId = null }) { Text(stringResource(R.string.ui_cancel)) } },
-            confirmButton = { TextButton(enabled = !deleting, onClick = {
-                deleting = true; deleteFailed = false
-                scope.launch {
-                    try { onDelete(card.id); selectedId = null; exposedId = null }
-                    catch (_: SQLiteException) { deleteFailed = true }
-                    finally { confirmId = null; deleting = false }
+        DeleteMeaningDialog(
+            card = card,
+            deleting = deleting,
+            onCancel = { confirmId = null },
+            onConfirm = {
+                if (!deleting) {
+                    deleting = true
+                    deleteFailed = false
+                    scope.launch {
+                        try { onDelete(card.id); selectedId = null; exposedId = null }
+                        catch (_: SQLiteException) { deleteFailed = true }
+                        finally { confirmId = null; deleting = false }
+                    }
                 }
-            }) { Text(stringResource(R.string.ui_delete)) } })
+            }
+        )
     }
+}
+
+@Composable
+private fun CardDetailHeading(title: String) {
+    Text(
+        title, Modifier.padding(top = 4.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
