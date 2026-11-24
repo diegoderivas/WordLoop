@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.diegovocabcards.data.Card
@@ -56,13 +58,9 @@ internal fun StudyPresentation(
             }
         }
         StudyTile(card, spanishFirst, revealed, Modifier.weight(1f).fillMaxWidth())
-        if (revealed) {
+        StudyFooter(revealed, onReveal) {
             cardTools(card)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp), content = actions)
-        } else {
-            Button(onClick = onReveal, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
-                Text(stringResource(R.string.ui_show_answer))
-            }
         }
     }
     if (confirming && onDelete != null) {
@@ -93,39 +91,80 @@ internal fun StudyPresentation(
 }
 
 @Composable
+private fun StudyFooter(
+    revealed: Boolean,
+    onReveal: () -> Unit,
+    controls: @Composable ColumnScope.() -> Unit
+) {
+    Layout(
+        modifier = Modifier.fillMaxWidth(),
+        content = {
+            Column(
+                if (revealed) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().clearAndSetSemantics {},
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = controls
+            )
+            if (!revealed) {
+                FilledTonalButton(
+                    onClick = onReveal,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge
+                ) {
+                    Text(stringResource(R.string.ui_show_answer), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(8.dp))
+                    Icon(painterResource(R.drawable.expand_more), contentDescription = null)
+                }
+            }
+        }
+    ) { measurables, constraints ->
+        // Measure the same controls in both phases and place only the active panel.
+        val answer = measurables.first().measure(constraints)
+        val reservedHeight = maxOf(answer.height, 54.dp.roundToPx()).coerceAtMost(constraints.maxHeight)
+        val reveal = measurables.getOrNull(1)?.measure(constraints.copy(minHeight = reservedHeight, maxHeight = reservedHeight))
+        layout(answer.width, reservedHeight) {
+            if (reveal != null) reveal.placeRelative(0, 0)
+            else answer.placeRelative(0, reservedHeight - answer.height)
+        }
+    }
+}
+
+@Composable
 private fun StudyTile(card: Card, spanishFirst: Boolean, revealed: Boolean, modifier: Modifier) {
     val attributed = GOOGLE_TRANSLATION in card.source
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val questionStyle = MaterialTheme.typography.headlineMedium
-            val answerStyle = MaterialTheme.typography.titleLarge
-            if (spanishFirst) {
-                SpanishStudyText(card, questionStyle, attributed)
-            } else {
-                EnglishStudyText(card, questionStyle)
-            }
-            if (!revealed) {
-                val library = LocalStudyCards.current
-                remember(card, library, spanishFirst) { studyHint(card, library, spanishFirst) }?.let {
-                    Text("Hint · $it", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-                }
-            }
-            if (revealed) {
-                HorizontalDivider()
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val questionStyle = MaterialTheme.typography.headlineMedium
+                val answerStyle = MaterialTheme.typography.titleLarge
                 if (spanishFirst) {
-                    EnglishStudyText(card, answerStyle)
+                    SpanishStudyText(card, questionStyle, attributed)
                 } else {
-                    SpanishStudyText(card, answerStyle, attributed)
+                    EnglishStudyText(card, questionStyle)
                 }
-                if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
-                SavedUsageContent("", card.generatedExamples)
+                if (!revealed) {
+                    val library = LocalStudyCards.current
+                    remember(card, library, spanishFirst) { studyHint(card, library, spanishFirst) }?.let {
+                        Text("Hint · $it", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                    }
+                }
+                if (revealed) {
+                    HorizontalDivider()
+                    if (spanishFirst) {
+                        EnglishStudyText(card, answerStyle)
+                    } else {
+                        SpanishStudyText(card, answerStyle, attributed)
+                    }
+                    if (card.example.isNotBlank()) Text(card.example, textAlign = TextAlign.Center)
+                    SavedUsageContent("", card.generatedExamples)
+                }
             }
         }
     }

@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -233,54 +234,55 @@ private fun StudyQuestion(
     val scope = rememberCoroutineScope()
     val spanishFirst = direction == Direction.ES_EN
     val at = revealedAt
+    val previewAt = remember(clock) { clock.millis() }
+    val intervalAt = at ?: previewAt
+    val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
+        if (turn > 0) value = dao.latest(card.id, direction)
+    }
+    val intervals = remember(previous, turn, settings, intervalAt) {
+        if (turn > 0 && previous?.turn != turn) null
+        else reviewChoices.associate { (rating, _) ->
+            rating to formatReviewInterval(Fsrs.rate(previous?.memory, rating, intervalAt, settings).dueAt - intervalAt)
+        }
+    }
+    val loadingIntervals = stringResource(R.string.ui_loading_intervals)
     StudyPresentation(
         card, spanishFirst, revealed = at != null,
         caption = "${direction.labelFor(languageName(card.language))} · ${completed + 1} of ${completed + remaining}",
         onReveal = { revealedAt = clock.millis() }, cardTools = cardTools,
         onDelete = onDelete, ratingPending = saving
     ) {
-        if (at != null) {
-            if (failed) Text(stringResource(R.string.ui_could_not_save_tap_a_rating_to_retry), color = MaterialTheme.colorScheme.error)
-            val previous by produceState<ReviewEvent?>(null, dao, card.id, direction, turn) {
-                if (turn > 0) value = dao.latest(card.id, direction)
-            }
-            if (turn > 0 && previous?.turn != turn) {
-                Text(stringResource(R.string.ui_loading_intervals))
-                return@StudyPresentation
-            }
-            val intervals = remember(previous, settings, at) {
-                reviewChoices.associate { (rating, _) ->
-                    rating to formatReviewInterval(Fsrs.rate(previous?.memory, rating, at, settings).dueAt - at)
-                }
-            }
-            for (pair in reviewChoices.chunked(2)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for ((rating, label) in pair) {
-                        val submit = {
-                            if (!saving) {
-                                saving = true
-                                failed = false
-                                scope.launch {
-                                    try {
-                                        onRate(rating, at)
-                                    } catch (_: SQLiteException) {
-                                        failed = true
-                                        saving = false
-                                    }
+        if (at != null && failed) {
+            Text(stringResource(R.string.ui_could_not_save_tap_a_rating_to_retry), color = MaterialTheme.colorScheme.error)
+        }
+        for (pair in reviewChoices.chunked(2)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((rating, label) in pair) {
+                    val submit = {
+                        if (at != null && intervals != null && !saving) {
+                            saving = true
+                            failed = false
+                            scope.launch {
+                                try {
+                                    onRate(rating, at)
+                                } catch (_: SQLiteException) {
+                                    failed = true
+                                    saving = false
                                 }
                             }
                         }
-                        val modifier = Modifier.weight(1f).heightIn(min = 64.dp)
-                        val caption: @Composable RowScope.() -> Unit = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(label, textAlign = TextAlign.Center)
-                                Text(intervals.getValue(rating), style = MaterialTheme.typography.bodySmall,
-                                    textAlign = TextAlign.Center)
-                            }
-                        }
-                        OutlinedButton(onClick = submit, modifier = modifier, enabled = !saving,
-                            contentPadding = PaddingValues(8.dp), content = caption)
                     }
+                    val modifier = Modifier.weight(1f).heightIn(min = 64.dp)
+                    val caption: @Composable RowScope.() -> Unit = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(label, textAlign = TextAlign.Center)
+                            Text(intervals?.getValue(rating) ?: "…",
+                                modifier = if (intervals == null) Modifier.semantics { contentDescription = loadingIntervals } else Modifier,
+                                style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                        }
+                    }
+                    OutlinedButton(onClick = submit, modifier = modifier, enabled = at != null && intervals != null && !saving,
+                        contentPadding = PaddingValues(8.dp), content = caption)
                 }
             }
         }
