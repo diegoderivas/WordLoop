@@ -30,17 +30,30 @@ internal suspend fun nanoSenseOptions(term: String, sense: Suggestion, task: Sen
 
 internal suspend fun nanoSenseAnswer(prompt: String, maxTokens: Int = 64): String? {
     if (NanoUsageNotes.unsupported) return null
-    val model = Generation.getClient()
-    try {
-        return withTimeoutOrNull(60_000) {
-            if (NanoUsageNotes.recordStatus(model.checkStatus()) != FeatureStatus.AVAILABLE) return@withTimeoutOrNull null
-            val request = generateContentRequest(TextPart(prompt)) {
-                temperature = 0.1f
-                maxOutputTokens = maxTokens
+    return optionalNanoCall(null) {
+        val model = Generation.getClient()
+        try {
+            withTimeoutOrNull(60_000) {
+                if (NanoUsageNotes.recordStatus(model.checkStatus()) != FeatureStatus.AVAILABLE) return@withTimeoutOrNull null
+                val request = generateContentRequest(TextPart(prompt)) {
+                    temperature = 0.1f
+                    maxOutputTokens = maxTokens
+                }
+                model.generateContent(request).candidates.firstOrNull()?.text
             }
-            model.generateContent(request).candidates.firstOrNull()?.text
+        } finally {
+            model.close()
         }
-    } finally {
-        model.close()
     }
+}
+
+internal suspend fun <T> optionalNanoCall(fallback: T, call: suspend () -> T): T = try {
+    call()
+} catch (cancelled: kotlinx.coroutines.CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    fallback
+} catch (_: LinkageError) {
+    // An optional SDK can fail to load or initialise even before returning a model.
+    fallback
 }

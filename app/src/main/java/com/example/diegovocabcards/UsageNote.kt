@@ -7,7 +7,6 @@ import com.google.mlkit.genai.prompt.TextPart
 import com.google.mlkit.genai.prompt.generateContentRequest
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.languageid.LanguageIdentificationOptions
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val GENERATED_WITH_NANO = "Generado con Gemini Nano"
@@ -179,22 +178,17 @@ internal object NanoUsageNotes : UsageNoteGenerator {
 
     suspend fun checkUnsupported(): Boolean {
         if (unsupported) return true
-        return try {
+        return optionalNanoCall(false) {
             val model = Generation.getClient()
             try { withTimeoutOrNull(15_000) { recordStatus(model.checkStatus()) } == FeatureStatus.UNAVAILABLE }
             finally { model.close() }
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { false }
+        }
     }
 
     override suspend fun generate(
         prompt: String, download: Boolean, onProgress: (UsageNoteProgress) -> Unit
-    ): UsageNoteResult = try {
+    ): UsageNoteResult = optionalNanoCall(UsageNoteResult.Error) {
         if (unsupported) UsageNoteResult.Unavailable else generateWithModel(prompt, download, onProgress)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        UsageNoteResult.Error
     }
 
     private suspend fun generateWithModel(

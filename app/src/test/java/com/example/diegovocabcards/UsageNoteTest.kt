@@ -1,9 +1,26 @@
 package com.example.diegovocabcards
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
 class UsageNoteTest {
+    @Test fun optionalNanoFailureFallsBackWithoutSwallowingCancellation() = runBlocking {
+        assertEquals("ready", optionalNanoCall("fallback") { "ready" })
+        assertEquals("fallback", optionalNanoCall("fallback") {
+            throw ExceptionInInitializerError("SDK failed to initialise")
+        })
+        assertNull(optionalNanoCall<String?>(null) { throw NoClassDefFoundError("SDK missing") })
+        val cancelled = CancellationException("Editor closed")
+        try {
+            optionalNanoCall("fallback") { throw cancelled }
+            fail("Cancellation must propagate")
+        } catch (error: CancellationException) {
+            assertSame(cancelled, error)
+        }
+    }
+
     @Test fun requestUsesOnlyTheSelectedSenseAndExplicitlyRequiresEnglish() {
         val flight = Suggestion("To begin a flight.", "verb", "SOURCE_ONLY",
             examples = listOf("The plane took off."), spanish = listOf("despegar"))
