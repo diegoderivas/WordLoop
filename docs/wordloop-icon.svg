@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="WordLoop icon">
+  <rect width="108" height="108" rx="24" fill="#355AA6"/>
+  <g transform="translate(13 12) scale(.83)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 32 24 65 40 48 56 65 66 32" stroke="#fff" stroke-width="10"/>
+    <path d="M75 52 V67 H88" stroke="#fff" stroke-width="8.5"/>
+    <path d="M58 16 H76 Q85 16 85 25 V38 M78 31 85 38 92 31 M39 83 H21 Q12 83 12 74 V64 M5 71 12 64 19 71" stroke="#B2CAFF" stroke-width="4.8"/>
+  </g>
+</svg>
