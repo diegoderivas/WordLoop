@@ -111,8 +111,6 @@ private fun StudyFooter(
                     shape = MaterialTheme.shapes.extraLarge
                 ) {
                     Text(stringResource(R.string.ui_show_answer), style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
-                    Icon(painterResource(R.drawable.expand_more), contentDescription = null)
                 }
             }
         }
