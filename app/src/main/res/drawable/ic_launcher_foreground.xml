@@ -1,6 +1,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="3.4"
-        android:strokeLineJoin="round" android:strokeLineCap="round"
-        android:pathData="M34,54V41Q34,37 38,37H64Q69,37 69,42V50 M40,49l-6,6l-6,-6 M74,54V67Q74,71 70,71H44Q39,71 39,66V58 M68,59l6,-6l6,6 M47,49h10 M47,55h14 M47,61h10" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Scale the approved artwork to fit the safe zone of the adaptive icon. -->
+    <group android:scaleX="0.64" android:scaleY="0.64"
+        android:translateX="22.64" android:translateY="22">
+        <path android:fillColor="#00000000" android:strokeColor="#FFFFFF"
+            android:strokeWidth="10" android:strokeLineJoin="round" android:strokeLineCap="round"
+            android:pathData="M15,32 L24,65 L40,48 L56,65 L66,32" />
+        <path android:fillColor="#00000000" android:strokeColor="#FFFFFF"
+            android:strokeWidth="8.5" android:strokeLineJoin="round" android:strokeLineCap="round"
+            android:pathData="M75,52 V67 H88" />
+        <path android:fillColor="#00000000" android:strokeColor="#B2CAFF"
+            android:strokeWidth="4.8" android:strokeLineJoin="round" android:strokeLineCap="round"
+            android:pathData="M58,16 H76 Q85,16 85,25 V38 M78,31 L85,38 L92,31 M39,83 H21 Q12,83 12,74 V64 M5,71 L12,64 L19,71" />
+    </group>
 </vector>
